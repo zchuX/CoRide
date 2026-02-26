@@ -42,6 +42,8 @@ object CreateUserGroupHandler {
       buff.toList
     }.getOrElse(Nil)
 
+    val numAnonymousUsers = Option(node.get("numAnonymousUsers")).filter(n => n != null && !n.isNull).map(_.asInt()).getOrElse(0)
+
     val rec = UserGroupRecord(
       arn = groupArn,
       tripArn = tripArn,
@@ -50,8 +52,18 @@ object CreateUserGroupHandler {
       destination = destination,
       pickupTime = pickupTime,
       users = users,
+      numAnonymousUsers = numAnonymousUsers,
       version = 1
     )
+
+    val tripOpt = dao.getTripMetadata(tripArn)
+    if (tripOpt.isEmpty) return Responses.json(404, """{"error":"Trip not found"}""")
+    val existingGroups = dao.listUserGroupRecordsByTripArn(tripArn)
+    val allGroups = existingGroups :+ rec
+    TripValidation.validateNoDuplicateUsersInTrip(tripOpt.get.driver, allGroups).foreach { msg =>
+      val escaped = msg.replace("\\", "\\\\").replace("\"", "\\\"")
+      return Responses.json(400, s"""{"error":"Bad Request","message":"$escaped"}""")
+    }
 
     val expectedTrip = VersioningUtils.tripExpectedVersion(event, dao, tripArn)
     try {

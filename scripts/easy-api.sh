@@ -2,17 +2,28 @@
 set -euo pipefail
 
 # Simple API caller that uses persisted stage info from scripts/.api/<stage>.json
-# Examples:
+#
+# One-off calls:
 #   ./scripts/easy-api.sh --stage dev auth/register '{"username":"alice","password":"hunter2","email":"alice@example.com"}'
 #   ./scripts/easy-api.sh --stage dev auth/register @payload.json
-# Workflow mode:
+#
+# Authenticated call using a saved session (after workflow login with --save-session):
+#   ./scripts/easy-api.sh --stage dev --session GET api/trips '{}'
+#
+# Workflow (login + create trip in one go; optionally save session for later calls):
 #   ./scripts/easy-api.sh --stage dev workflow login-create-trip --email alice@example.com --password p@ss \
-#     --start "Home" --dest "Work" --group-name "Friends" --driver-confirmed true
+#     --trip-start Seattle --trip-dest Vancouver --driver-confirmed true --save-session
+#
+# Session: Use --save-session in a workflow to write the bearer token to scripts/.api/<stage>.session.
+# Use --session in any call to send Authorization: Bearer <token> from that file.
 
 STAGE=""
 METHOD="POST"
 SOURCE="apigw" # or 'cloudfront'
+USE_SESSION="false"
+SAVE_SESSION="false"
 declare -a EXTRA_HEADERS=()
+SESSION_FILE=""  # set after STAGE is known: scripts/.api/<stage>.session
 
 usage() {
   cat <<USAGE
@@ -23,23 +34,31 @@ Examples:
   $0 --stage dev auth/register @payload.json
 
 Options:
-  --stage     Target stage to use (dev|staging|prod)
-  --method    HTTP method (default POST)
-  --source    apigw|cloudfront (default apigw). If cloudfront is persisted, you can call via CDN.
-  --header    Additional header, can be used multiple times (e.g. --header 'Authorization: Bearer <token>')
+  --stage       Target stage to use (dev|staging|prod)
+  --method      HTTP method (default POST)
+  --source      apigw|cloudfront (default apigw). If cloudfront is persisted, you can call via CDN.
+  --header      Additional header, can be used multiple times (e.g. --header 'Authorization: Bearer <token>')
+  --session     Use bearer token from scripts/.api/<stage>.session (from a prior workflow with --save-session)
+  --save-session (workflow only) After login, write bearer token to scripts/.api/<stage>.session for later --session calls
 
 Workflow mode:
+  $0 --stage <stage> workflow login [options]              Login only; --save-session stores token for later --session calls.
   $0 --stage <stage> workflow login-create-trip [options]
-  Options:
+  Options (login): --email | --phone | --username, --password, --profile <label|primary>, --save-session
+  Options (login-create-trip):
     --email <email> | --phone <E.164>   Login identifier (one required)
     --password <password>               Login password (required)
     --status <status>                   Trip status (default: Upcoming)
+    --trip-start <location>             Trip-level start location (e.g. Seattle)
+    --trip-dest <location>              Trip-level destination (e.g. Vancouver)
     --start <location>                  Group start (default: Home)
     --dest <location>                   Group destination (default: Work)
     --pickup <epochMillis>              Group pickup time (default: now+1h)
     --group-name <name>                 Group name (default: Friends)
     --driver-confirmed true|false       Mark caller as driver and confirmed (default: false)
     --notes <text>                      Trip notes (optional)
+    --save-session                      Save bearer token to scripts/.api/<stage>.session after login
+    --profile <label|primary>           Load email (and password) from scripts/.api/users.json (label or "primary")
 USAGE
 }
 
@@ -53,6 +72,10 @@ while [[ $# -gt 0 ]]; do
       SOURCE="$2"; shift 2;;
     --header)
       EXTRA_HEADERS+=("$2"); shift 2;;
+    --session)
+      USE_SESSION="true"; shift 1;;
+    --save-session)
+      SAVE_SESSION="true"; shift 1;;
     -h|--help)
       usage; exit 0;;
     *)
@@ -68,6 +91,8 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 INFO_FILE="$ROOT_DIR/scripts/.api/${STAGE}.json"
+SESSION_FILE="$ROOT_DIR/scripts/.api/${STAGE}.session"
+USERS_FILE="$ROOT_DIR/scripts/.api/users.json"
 
 # ------------- Helpers -------------
 require_jq() {
@@ -143,34 +168,121 @@ print(int(time.time()*1000))
 PY
 }
 
-workflow_login_create_trip() {
+# Login only: get token and optionally save to session file for later --session calls.
+workflow_login() {
   require_jq
   api_info
-
-  local email="" phone="" username="" password="" status="Upcoming" start="Home" dest="Work" pickup="" group_name="Friends" driver_confirmed="false" notes=""
+  local email="" phone="" username="" password="" profile=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --email) email="$2"; shift 2;;
       --phone) phone="$2"; shift 2;;
       --username) username="$2"; shift 2;;
       --password) password="$2"; shift 2;;
+      --profile) profile="$2"; shift 2;;
+      --save-session) SAVE_SESSION="true"; shift 1;;
+      *) echo "Unknown option for workflow login: $1" >&2; exit 1;;
+    esac
+  done
+  if [[ -n "$profile" ]]; then
+    if [[ ! -f "${USERS_FILE:-}" ]]; then
+      echo "Error: --profile requested but $USERS_FILE not found" >&2
+      exit 1
+    fi
+    if [[ "$profile" == "primary" ]]; then
+      email=$(jq -r '.users[] | select(.primary == true) | .email' "$USERS_FILE")
+    else
+      email=$(jq -r --arg label "$profile" '.users[] | select(.label == $label) | .email' "$USERS_FILE")
+    fi
+    [[ -z "$password" ]] && password=$(jq -r '.password' "$USERS_FILE")
+    echo "[+] Using profile: $profile ($email)" >&2
+  fi
+  local id_count=0
+  [[ -n "$email" ]] && ((id_count++)) || true
+  [[ -n "$phone" ]] && ((id_count++)) || true
+  [[ -n "$username" ]] && ((id_count++)) || true
+  if [[ -z "$password" || $id_count -ne 1 ]]; then
+    echo "Error: provide --password and exactly one of --email, --phone, or --username; or --profile" >&2
+    exit 1
+  fi
+  local login_payload
+  if [[ -n "$email" ]]; then
+    login_payload=$(printf '{"email":"%s","password":"%s"}' "$email" "$password")
+  elif [[ -n "$phone" ]]; then
+    login_payload=$(printf '{"phone_number":"%s","password":"%s"}' "$phone" "$password")
+  else
+    login_payload=$(printf '{"username":"%s","password":"%s"}' "$username" "$password")
+  fi
+  local login_res
+  login_res=$(call_api POST "auth/login" "$login_payload")
+  local id_token
+  id_token=$(echo "$login_res" | jq -r '.idToken // .id_token // empty')
+  if [[ -z "$id_token" || "$id_token" == "null" ]]; then
+    echo "Login failed: $login_res" >&2
+    exit 1
+  fi
+  echo "[+] Login OK" >&2
+  if [[ "$SAVE_SESSION" == "true" && -n "$SESSION_FILE" ]]; then
+    printf '%s' "$id_token" > "$SESSION_FILE"
+    echo "[+] Session saved to $SESSION_FILE" >&2
+  fi
+  echo "$login_res"
+}
+
+workflow_login_create_trip() {
+  require_jq
+  api_info
+
+  local email="" phone="" username="" password="" profile="" status="Upcoming" trip_start="" trip_dest="" start="Home" dest="Work" pickup="" group_name="Friends" driver_confirmed="false" notes=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --email) email="$2"; shift 2;;
+      --phone) phone="$2"; shift 2;;
+      --username) username="$2"; shift 2;;
+      --password) password="$2"; shift 2;;
+      --profile) profile="$2"; shift 2;;
       --status) status="$2"; shift 2;;
+      --trip-start) trip_start="$2"; shift 2;;
+      --trip-dest) trip_dest="$2"; shift 2;;
       --start) start="$2"; shift 2;;
       --dest) dest="$2"; shift 2;;
       --pickup) pickup="$2"; shift 2;;
       --group-name) group_name="$2"; shift 2;;
       --driver-confirmed) driver_confirmed="$2"; shift 2;;
       --notes) notes="$2"; shift 2;;
+      --save-session) SAVE_SESSION="true"; shift 1;;
       *) echo "Unknown option for workflow: $1" >&2; exit 1;;
     esac
   done
-  # Require exactly one of email, phone, or username
+
+  # Load from user profiles file if --profile set
+  if [[ -n "$profile" ]]; then
+    if [[ ! -f "${USERS_FILE:-}" ]]; then
+      echo "Error: --profile requested but $USERS_FILE not found (copy from users.example.json)" >&2
+      exit 1
+    fi
+    if [[ "$profile" == "primary" ]]; then
+      email=$(jq -r '.users[] | select(.primary == true) | .email' "$USERS_FILE")
+    else
+      email=$(jq -r --arg label "$profile" '.users[] | select(.label == $label) | .email' "$USERS_FILE")
+    fi
+    if [[ -z "$email" || "$email" == "null" ]]; then
+      echo "Error: no user found for profile '$profile' in $USERS_FILE" >&2
+      exit 1
+    fi
+    if [[ -z "$password" ]]; then
+      password=$(jq -r '.password' "$USERS_FILE")
+    fi
+    echo "[+] Using profile: $profile ($email)" >&2
+  fi
+
+  # Require exactly one of email, phone, or username (profile supplies email)
   local id_count=0
   [[ -n "$email" ]] && ((id_count++)) || true
   [[ -n "$phone" ]] && ((id_count++)) || true
   [[ -n "$username" ]] && ((id_count++)) || true
   if [[ -z "$password" || $id_count -ne 1 ]]; then
-    echo "Error: provide --password and exactly one of --email, --phone, or --username" >&2
+    echo "Error: provide --password and exactly one of --email, --phone, or --username; or use --profile <label|primary> with users.json" >&2
     exit 1
   fi
   if [[ -z "$pickup" ]]; then pickup=$(($(now_ms)+3600000)); fi
@@ -193,6 +305,10 @@ workflow_login_create_trip() {
     exit 1
   fi
   echo "[+] Login OK" >&2
+  if [[ "$SAVE_SESSION" == "true" && -n "$SESSION_FILE" ]]; then
+    printf '%s' "$id_token" > "$SESSION_FILE"
+    echo "[+] Session saved to $SESSION_FILE" >&2
+  fi
 
   # 2) Get /auth/me for userArn and name
   local me_res
@@ -241,24 +357,28 @@ workflow_login_create_trip() {
   else
     notes_json=""
   fi
+  # Trip-level start/destination (optional; used for TripMetadata.locations and driver UserTrip)
+  local trip_loc_json=""
+  if [[ -n "$trip_start" || -n "$trip_dest" ]]; then
+    trip_loc_json=$(printf '"start":"%s","destination":"%s",' "$trip_start" "$trip_dest")
+  fi
+  # When caller is driver, create trip with no user groups (API rejects duplicate driver/passenger)
+  local groups_json
+  if [[ "$driver_confirmed" == "true" ]]; then
+    groups_json='[]'
+  else
+    groups_json=$(printf '[{"arn":"%s","groupName":"%s","start":"%s","destination":"%s","pickupTime":%s,"users":[{"userId":"%s","name":"%s","accept":false}]}]' "$group_arn" "$group_name" "$start" "$dest" "$pickup" "$user_arn" "$user_name")
+  fi
   local create_payload
   create_payload=$(cat <<JSON
 {
   "tripArn":"$trip_arn",
   "startTime": $now,
   "status":"$status",
+  ${trip_loc_json}
   ${driver_json}
   "car": $car_json,
-  "groups": [
-    {
-      "arn":"$group_arn",
-      "groupName":"$group_name",
-      "start":"$start",
-      "destination":"$dest",
-      "pickupTime": $pickup,
-      "users":[{"userId":"$user_arn","name":"$user_name","accept":false}]
-    }
-  ]
+  "groups": $groups_json
   ${notes_json}
 }
 JSON
@@ -282,6 +402,8 @@ if [[ $# -gt 0 && "$1" == "workflow" ]]; then
   shift
   wf_name="${1:-}"; shift || true
   case "$wf_name" in
+    login)
+      workflow_login "$@";;
     login-create-trip)
       workflow_login_create_trip "$@";;
     *)
@@ -290,7 +412,7 @@ if [[ $# -gt 0 && "$1" == "workflow" ]]; then
   exit 0
 fi
 
-# Legacy simple call mode requires <path> <json>
+# Simple call mode requires <path> <json>
 if [[ $# -lt 2 ]]; then
   echo "Error: path and json payload are required" >&2
   usage
@@ -301,6 +423,19 @@ PATH_SEG="$1"
 PAYLOAD="$2"
 
 api_info
+
+# Load session token from file if requested
+if [[ "$USE_SESSION" == "true" && -n "${SESSION_FILE:-}" && -f "${SESSION_FILE:-}" ]]; then
+  token=$(cat "$SESSION_FILE")
+  if [[ -n "$token" ]]; then
+    EXTRA_HEADERS+=("Authorization: Bearer $token")
+    echo "[+] Using session from $SESSION_FILE" >&2
+  else
+    echo "Warning: session file is empty; proceeding without auth" >&2
+  fi
+elif [[ "$USE_SESSION" == "true" ]]; then
+  echo "Warning: --session requested but no session file at ${SESSION_FILE:-<unknown>}; proceeding without auth" >&2
+fi
 
 if [[ -z "${API_KEY:-}" || "${API_KEY:-}" == "null" ]]; then
   echo "Warning: apiKeyValue missing; calling without x-api-key" >&2
@@ -320,7 +455,7 @@ if [[ -n "${API_KEY:-}" && "${API_KEY:-}" != "null" ]]; then
   curl_cmd+=( -H "x-api-key: $API_KEY" )
 fi
 
-# Add any extra headers provided
+# Add any extra headers (e.g. Authorization from --session)
 if [[ ${#EXTRA_HEADERS[@]} -gt 0 ]]; then
   for h in "${EXTRA_HEADERS[@]}"; do
     curl_cmd+=( -H "$h" )

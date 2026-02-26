@@ -51,6 +51,17 @@ object UpdateUserGroupHandler {
         }
         val numAnonymousUsers = Option(node.get("numAnonymousUsers")).map(_.asInt())
 
+        val newUsersList = users.getOrElse(g.users)
+        val tripOpt = dao.getTripMetadata(g.tripArn)
+        if (tripOpt.isDefined) {
+          val otherGroups = dao.listUserGroupRecordsByTripArn(g.tripArn).filter(_.arn != groupArn)
+          val syntheticGroups = otherGroups :+ g.copy(users = newUsersList)
+          TripValidation.validateNoDuplicateUsersInTrip(tripOpt.get.driver, syntheticGroups).foreach { msg =>
+            val escaped = msg.replace("\\", "\\\\").replace("\"", "\\\"")
+            return Responses.json(400, s"""{"error":"Bad Request","message":"$escaped"}""")
+          }
+        }
+
         val expectedTrip = VersioningUtils.tripExpectedVersion(event, dao, g.tripArn)
         val expectedGroup = VersioningUtils.groupExpectedVersion(event, dao, groupArn)
 

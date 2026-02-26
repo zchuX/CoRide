@@ -48,8 +48,8 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
 
     val tripArn = generateTripArn()
 
-    val startOpt = Option(node.get("start")).filter(n => n != null && !n.isNull).map(_.asText())
-    val destOpt = Option(node.get("destination")).filter(n => n != null && !n.isNull).map(_.asText())
+    val startOpt = Option(node.get("start")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty)
+    val destOpt = Option(node.get("destination")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty)
 
     val carOpt = Option(node.get("car")).filter(n => n != null && !n.isNull).map { cn =>
       Car(
@@ -61,6 +61,11 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
 
     val driverIdOpt = Option(node.get("driver")).filter(n => n != null && !n.isNull).map(_.asText())
     val driverOpt = driverIdOpt.flatMap(userDao.getUser)
+
+    // Trip-level start/destination: evaluate and dedupe (order: start then destination)
+    val topLevelLocations = (startOpt.toList ++ destOpt.toList).distinct.map { name =>
+      Location(locationName = name, pickupGroups = Nil, dropOffGroups = Nil, arrived = false, arrivedTime = None)
+    }
 
     val base = try {
       TripMetadata(
@@ -77,7 +82,7 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
         users = None,
         notes = Option(node.get("notes")).filter(n => n != null && !n.isNull).map(_.asText()),
         version = 1,
-        locations = Nil,
+        locations = topLevelLocations,
         usergroups = None
       )
     } catch {
@@ -87,10 +92,7 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
         return Responses.json(400, s"""{"error":"Bad Request","message":"CreateTripHandler.base: $cls: $msg"}""")
     }
 
-    val groups: List[UserGroupRecord] = if (driverIdOpt.isDefined) {
-      Nil
-    } else {
-      try {
+    val groups: List[UserGroupRecord] = try {
         val groupsNode = node.get("groups")
         if (groupsNode != null && groupsNode.isArray) {
           val it = groupsNode.elements()
@@ -99,8 +101,8 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
             val gn = it.next()
             val arn = gn.get("arn").asText()
             val groupName = gn.get("groupName").asText()
-            val start = gn.get("start").asText()
-            val destination = gn.get("destination").asText()
+            val start = Option(gn.get("start")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty).getOrElse("")
+            val destination = Option(gn.get("destination")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty).getOrElse("")
             val pickupTime = gn.get("pickupTime").asLong()
             val numAnonymousUsers = Option(gn.get("numAnonymousUsers")).map(_.asInt).getOrElse(0)
             val usersNode = gn.get("users")
@@ -127,7 +129,6 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
           val cls = e.getClass.getName
           return Responses.json(400, s"""{"error":"Bad Request","message":"CreateTripHandler.groups: $cls: $msg"}""")
       }
-    }
 
     // Ensure the acting user is marked as confirmed in any provided group.
     val actingUserId = userIdOpt.get
@@ -145,37 +146,10 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
         (firstGroup.map(_.start).getOrElse(""), firstGroup.map(_.destination).getOrElse(""))
     }
 
-    // Create locations from groups
-    val locationsFromGroups = groupsAdjusted.flatMap { ug =>
-      List(
-        Location(locationName = ug.start, pickupGroups = List(ug.groupName), dropOffGroups = Nil, arrived = false, arrivedTime = None),
-        Location(locationName = ug.destination, pickupGroups = Nil, dropOffGroups = List(ug.groupName), arrived = false, arrivedTime = None)
-      )
+    TripValidation.validateNoDuplicateUsersInTrip(driverIdOpt, groupsAdjusted).foreach { msg =>
+      val escaped = msg.replace("\\", "\\\\").replace("\"", "\\\"")
+      return Responses.json(400, s"""{"error":"Bad Request","message":"$escaped"}""")
     }
-
-    // Also include top-level start/dest if they exist
-    val topLevelLocations = (startOpt, destOpt) match {
-        case (Some(s), Some(d)) => List(
-            Location(locationName = s, pickupGroups = Nil, dropOffGroups = Nil, arrived = false, arrivedTime = None),
-            Location(locationName = d, pickupGroups = Nil, dropOffGroups = Nil, arrived = false, arrivedTime = None)
-        )
-        case _ => Nil
-    }
-
-    // Merge all locations, ensuring uniqueness and combining group associations
-    val allInitialLocations = (locationsFromGroups ++ topLevelLocations)
-      .filter(_.locationName.nonEmpty)
-      .groupBy(_.locationName)
-      .map { case (name, locs) =>
-        locs.head.copy(
-          pickupGroups = locs.flatMap(_.pickupGroups).distinct,
-          dropOffGroups = locs.flatMap(_.dropOffGroups).distinct
-        )
-      }.toList
-
-    val baseWithInitialLocs = base.copy(locations = allInitialLocations)
-    val finalLocations = tripDao.orderedLocationsFromRecords(baseWithInitialLocs, groupsAdjusted)
-    val finalBase = baseWithInitialLocs.copy(locations = finalLocations)
 
     try {
       if (driverIdOpt.isDefined) {
@@ -192,50 +166,64 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
           driverConfirmed = true,
           version = 1
         )
-        tripDao.createTripWithDriver(finalBase, groupsAdjusted, driverTrip)
+        tripDao.createTripWithDriver(base, groupsAdjusted, driverTrip)
       } else {
-        tripDao.createTrip(finalBase, groupsAdjusted)
+        tripDao.createTrip(base, groupsAdjusted)
       }
     } catch {
       case e: Throwable =>
         val msg = Option(e.getMessage).getOrElse(e.toString)
         val cls = e.getClass.getName
-        val st = e.getStackTrace.take(12).map(_.toString).mkString("\\n")
-        val err = mapper.createObjectNode()
-        err.put("error", "Internal Server Error")
-        err.put("message", s"CreateTripHandler.createTrip: $cls: $msg")
-        err.put("stack", st)
-        return Responses.json(500, mapper.writeValueAsString(err))
+        val st = e.getStackTrace.take(12).map(_.toString).mkString("\n")
+        return Responses.json(500, s"""{"error":"Internal Server Error", "message":"$cls: $msg", "stack":"$st"}""")
+    }
+    
+    val responseBody = mapper.createObjectNode()
+    responseBody.put("tripArn", tripArn)
+    responseBody.put("startTime", base.startTime)
+    responseBody.put("status", base.status)
+    driverIdOpt.foreach(responseBody.put("driver", _))
+    driverOpt.foreach(d => responseBody.put("driverName", d.name))
+    responseBody.put("driverConfirmed", driverIdOpt.isDefined)
+    
+    val finalLocations = tripDao.getTripMetadata(tripArn).map(_.locations).getOrElse(Nil)
+    val locationsNode = mapper.createArrayNode()
+    finalLocations.foreach { loc =>
+        val locNode = mapper.createObjectNode()
+        locNode.put("locationName", loc.locationName)
+        val pickupGroupsNode = mapper.createArrayNode()
+        loc.pickupGroups.foreach(s => { pickupGroupsNode.add(s); () })
+        locNode.set("pickupGroups", pickupGroupsNode)
+        val dropOffGroupsNode = mapper.createArrayNode()
+        loc.dropOffGroups.foreach(s => { dropOffGroupsNode.add(s); () })
+        locNode.set("dropOffGroups", dropOffGroupsNode)
+        locNode.put("arrived", loc.arrived)
+        loc.arrivedTime.foreach(t => { locNode.put("arrivedTime", t); () })
+        locationsNode.add(locNode)
+    }
+    responseBody.set("locations", locationsNode)
+
+    carOpt.foreach { c =>
+        val carNode = mapper.createObjectNode()
+        c.plateNumber.foreach(carNode.put("plateNumber", _))
+        c.color.foreach(carNode.put("color", _))
+        c.model.foreach(carNode.put("model", _))
+        responseBody.set("car", carNode)
+        ()
     }
 
-    val created: TripMetadata = try {
-      tripDao.getTripMetadata(tripArn).getOrElse(base)
-    } catch {
-      case e: Throwable =>
-        val msg = Option(e.getMessage).getOrElse(e.toString)
-        val cls = e.getClass.getName
-        val st = e.getStackTrace.take(12).map(_.toString).mkString("\\n")
-        val err = mapper.createObjectNode()
-        err.put("error", "Internal Server Error")
-        err.put("message", s"CreateTripHandler.getTripMetadata: $cls: $msg")
-        err.put("stack", st)
-        return Responses.json(500, mapper.writeValueAsString(err))
+    val userGroupsNode = mapper.createArrayNode()
+    tripDao.getTripMetadata(tripArn).flatMap(_.usergroups).getOrElse(Nil).foreach { ug =>
+        val ugNode = mapper.createObjectNode()
+        ugNode.put("groupId", ug.groupId)
+        ugNode.put("groupName", ug.groupName)
+        ugNode.put("groupSize", ug.groupSize)
+        ug.imageUrl.foreach(url => { ugNode.put("imageUrl", url); () })
+        userGroupsNode.add(ugNode)
     }
+    responseBody.set("usergroups", userGroupsNode)
+    responseBody.put("version", 1)
 
-    val bodyNode = GetUserTripsHandler.toJson(created)
-
-    try {
-      Responses.json(200, mapper.writeValueAsString(bodyNode))
-    } catch {
-      case e: Throwable =>
-        val msg = Option(e.getMessage).getOrElse(e.toString)
-        val cls = e.getClass.getName
-        val st = e.getStackTrace.take(12).map(_.toString).mkString("\\n")
-        val err = mapper.createObjectNode()
-        err.put("error", "Internal Server Error")
-        err.put("message", s"CreateTripHandler.serialize: $cls: $msg")
-        err.put("stack", st)
-        Responses.json(500, mapper.writeValueAsString(err))
-    }
+    Responses.json(200, responseBody.toString)
   }
 }

@@ -102,19 +102,19 @@ class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGro
           val locationName = parts(1).stripSuffix("/arrival")
           FlipLocationArrivalHandler.handle(event)
 
-        case ("PUT", p) if p.startsWith("/user-groups/") =>
-          val groupArn = p.stripPrefix("/user-groups/")
+        case ("PUT", p) if p.startsWith("/user-groups/") || p.startsWith("/api/user-groups/") =>
+          val groupArn = p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/")
           UpdateUserGroupHandler.handle(event)
 
-        case ("POST", "/user-groups") =>
+        case ("POST", "/user-groups") | ("POST", "/api/user-groups") =>
           CreateUserGroupHandler.handle(event)
 
-        case ("POST", p) if p.matches("/user-groups/.+/accept") =>
-          val groupArn = p.stripPrefix("/user-groups/").stripSuffix("/accept")
+        case ("POST", p) if p.matches("/user-groups/.+/accept") || p.matches("/api/user-groups/.+/accept") =>
+          val groupArn = p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/").stripSuffix("/accept")
           AcceptInvitationHandler.handle(event, groupArn)
 
-        case ("POST", p) if p.matches("/user-groups/.+/join") =>
-          val groupArn = p.stripPrefix("/user-groups/").stripSuffix("/join")
+        case ("POST", p) if p.matches("/user-groups/.+/join") || p.matches("/api/user-groups/.+/join") =>
+          val groupArn = p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/").stripSuffix("/join")
           JoinUserGroupHandler.handle(event)
 
         case ("POST", p) if p.matches("/api/trips/.+/start") =>

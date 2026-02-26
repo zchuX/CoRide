@@ -87,6 +87,7 @@ Options:
 - `--method` (default `POST`)
 - `--header` for extra headers (repeatable), e.g. `--header 'Authorization: Bearer <token>'`
 - `--source apigw|cloudfront` selects base URL source (default `apigw`)
+- `--session` use bearer token from `scripts/.api/<stage>.session` (from a prior workflow run with `--save-session`)
 
 ### API key requirement
 
@@ -114,31 +115,91 @@ Options:
 
 ## Workflow Mode
 
-The script also supports a higher-level workflow that chains calls together to quickly create mock trips:
+The script supports a workflow that logs in, optionally saves a session, and creates a trip in one go. You can then use the saved session for later API calls with `--session`.
+
+### login-create-trip
 
 ```
 ./easy-api.sh --stage <stage> workflow login-create-trip \
   --email <email> | --phone <E.164> \
   --password <password> \
-  [--status Upcoming|Invitation|InProgress|Completed|Cancelled] \
+  [--trip-start <location>] [--trip-dest <location>] \
   [--start <location>] [--dest <location>] [--pickup <epochMillis>] \
-  [--group-name <name>] [--driver-confirmed true|false] [--notes <text>]
+  [--group-name <name>] [--driver-confirmed true|false] [--notes <text>] \
+  [--save-session]
 ```
 
 What it does:
 
 - Logs in via `/auth/login` using the provided credentials.
+- If `--save-session` is set, writes the bearer token to `scripts/.api/<stage>.session` so you can use `--session` in later calls.
 - Calls `/auth/me` to resolve your `userArn` and name.
-- Creates a trip via `POST /api/trips` with a generated `tripArn` and a single group containing the caller as a pending member. If `--driver-confirmed true`, it sets the caller as `driver` with `driverConfirmed=true`.
+- Creates a trip via `POST /api/trips` with a generated `tripArn` and a single group. Trip-level `--trip-start` / `--trip-dest` set the trip’s start/destination (and the driver’s UserTrip); group `--start` / `--dest` set the group’s pickup/dropoff. If `--driver-confirmed true`, the caller is set as driver with `driverConfirmed=true`.
 
 Defaults:
 
 - `status`: `Upcoming`
-- `start`: `Home`
-- `dest`: `Work`
+- `start` (group): `Home`
+- `dest` (group): `Work`
 - `pickup`: now + 1h (epoch millis)
 - `group-name`: `Friends`
 - `driver-confirmed`: `false`
+
+### Using a saved session
+
+After a workflow run with `--save-session`, any one-off call can use the stored token:
+
+```
+./easy-api.sh --stage dev --session GET api/trips '{}'
+```
+
+**Create a user group** (e.g. with 2 anonymous users) on an existing trip. Use your stored session (bearer token) for any authenticated call:
+
+```bash
+TRIP_ARN="B3MS6L"
+GROUP_ARN="group:$(uuidgen | tr '[:upper:]' '[:lower:]')"
+PICKUP=$(python3 -c 'import time; print(int(time.time()*1000)+3600000)')
+./easy-api.sh --stage dev --session api/user-groups "{\"tripArn\":\"$TRIP_ARN\",\"groupArn\":\"$GROUP_ARN\",\"groupName\":\"Riders\",\"start\":\"Downtown\",\"destination\":\"Airport\",\"pickupTime\":$PICKUP,\"numAnonymousUsers\":2,\"users\":[]}"
+```
+
+Path must be `api/user-groups` so the request goes through the API Gateway proxy. If the session is expired, run `workflow login --profile primary --save-session` first to refresh the token.
+
+Session file path: `scripts/.api/<stage>.session` (single line = bearer token). Do not commit this file; add `scripts/.api/*.session` to `.gitignore` if needed.
+
+### User profiles (optional)
+
+To avoid passing email/password on the command line, you can use a profiles file and `--profile`:
+
+1. Copy the example and add your credentials (the file is gitignored):
+   ```bash
+   cp scripts/.api/users.example.json scripts/.api/users.json
+   # Edit scripts/.api/users.json: set "password" and "users" with "email", "primary", "label"
+   ```
+2. Run the workflow with a profile:
+   ```bash
+   ./easy-api.sh --stage dev workflow login-create-trip --profile primary \
+     --trip-start Seattle --trip-dest Vancouver --driver-confirmed true --save-session
+   ```
+   Use `--profile primary` for the user with `"primary": true`, or `--profile <label>` for a user’s `label` (e.g. `zchu1`, `cxh`).
+
+### Example: login, store session, create trip as driver (Seattle → Vancouver)
+
+With explicit credentials:
+```bash
+./easy-api.sh --stage dev workflow login-create-trip \
+  --email your@email.com --password 'yourpassword' \
+  --trip-start Seattle --trip-dest Vancouver \
+  --driver-confirmed true --save-session
+```
+
+With user profile (recommended):
+```bash
+./easy-api.sh --stage dev workflow login-create-trip --profile primary \
+  --trip-start Seattle --trip-dest Vancouver \
+  --driver-confirmed true --save-session
+```
+
+You can then validate in the database that `TripMetadata.locations` and the driver’s `UserTrip.start` / `UserTrip.destination` are set correctly.
 
 Notes:
 

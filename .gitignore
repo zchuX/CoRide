@@ -12,6 +12,11 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
+# API session tokens (easy-api.sh --save-session)
+scripts/.api/*.session
+# User profiles with credentials (copy from users.example.json)
+scripts/.api/users.json
+
 # Build output
 dist/
 build/

@@ -166,9 +166,9 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
       } 
     } 
   
-    // --- 1️⃣ Prepare pickups --- 
+    // --- 1️⃣ Prepare pickups (only include non-empty location names) --- 
     val pickups: Seq[(String, String, String, Long)] = 
-      groups.map(g => (g.start, g.arn, "pickup", g.pickupTime)) 
+      groups.flatMap(g => if (g.start.nonEmpty) Some((g.start, g.arn, "pickup", g.pickupTime)) else None) 
     val pickupLocationsMap = mergeLocations(pickups) 
     val pickupLocationsOrdered = pickups 
       .sortBy(_._4)                    // ascending by pickupTime 
@@ -176,9 +176,9 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
       .distinct 
       .map(pickupLocationsMap)         // get Location object 
   
-    // --- 2️⃣ Prepare dropoffs --- 
+    // --- 2️⃣ Prepare dropoffs (only include non-empty location names) --- 
     val dropoffs: Seq[(String, String, String, Long)] = 
-      groups.map(g => (g.destination, g.arn, "dropoff", g.pickupTime)) 
+      groups.flatMap(g => if (g.destination.nonEmpty) Some((g.destination, g.arn, "dropoff", g.pickupTime)) else None) 
     val dropoffLocationsMap = mergeLocations(dropoffs) 
     val dropoffLocationsOrdered = dropoffs 
       .sortBy(-_._4)                   // descending by pickupTime 
@@ -340,6 +340,7 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
       ).build()
     )
 
+    val driverId = base.driver
     groups.foreach { g =>
       writes.add(
         TransactWriteItem.builder().put(
@@ -351,17 +352,21 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
         ).build()
       )
       g.users.foreach { u =>
-        val ut = buildUserTripFromRecord(trip, g, u)
-        writes.add(
-          TransactWriteItem.builder().put(
-            Put.builder()
-              .tableName(userTripsTable)
-              .item(userTripToItem(ut))
-              .conditionExpression("attribute_not_exists(arn)")
-              .build()
-          ).build()
-        )
-        logger.info(s"Inserted UserTrip ${ut.arn} with status=Invitation")
+        // Skip driver: already wrote driver's UserTrip with trip-level start/destination
+        if (driverId.exists(_ == u.userId)) ()
+        else {
+          val ut = buildUserTripFromRecord(trip, g, u)
+          writes.add(
+            TransactWriteItem.builder().put(
+              Put.builder()
+                .tableName(userTripsTable)
+                .item(userTripToItem(ut))
+                .conditionExpression("attribute_not_exists(arn)")
+                .build()
+            ).build()
+          )
+          logger.info(s"Inserted UserTrip ${ut.arn} with status=Invitation")
+        }
       }
     }
     val req = TransactWriteItemsRequest.builder().transactItems(writes).build()

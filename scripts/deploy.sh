@@ -37,27 +37,32 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 build_project() {
   local dir="$1"
+  local publish_after="${2:-false}"
   echo "[+] Running tests in $dir"
   (cd "$dir" && sbt -batch test)
   echo "[+] Building assembly in $dir"
   (cd "$dir" && sbt -batch assembly)
+  if [[ "$publish_after" == "true" ]]; then
+    echo "[+] Publishing $dir to local Ivy (so handler assembly picks up changes)"
+    (cd "$dir" && sbt -batch publishLocal)
+  fi
 }
 
 if [[ "$BUILD_SCALA" != "none" ]]; then
   case "$BUILD_SCALA" in
     all)
-      build_project "$ROOT_DIR/tripDAO"
-      build_project "$ROOT_DIR/userDAO"
-      build_project "$ROOT_DIR/rateLimitDAO"
-      build_project "$ROOT_DIR/corrideLambdaHandler"
+      build_project "$ROOT_DIR/tripDAO" true
+      build_project "$ROOT_DIR/userDAO" true
+      build_project "$ROOT_DIR/rateLimitDAO" true
+      build_project "$ROOT_DIR/corrideLambdaHandler" false
       ;;
     handler)
-      build_project "$ROOT_DIR/corrideLambdaHandler"
+      build_project "$ROOT_DIR/corrideLambdaHandler" false
       ;;
     daos)
-      build_project "$ROOT_DIR/tripDAO"
-      build_project "$ROOT_DIR/userDAO"
-      build_project "$ROOT_DIR/rateLimitDAO"
+      build_project "$ROOT_DIR/tripDAO" true
+      build_project "$ROOT_DIR/userDAO" true
+      build_project "$ROOT_DIR/rateLimitDAO" true
       ;;
     *)
       echo "Unknown --build-scala option: $BUILD_SCALA"; exit 1;;

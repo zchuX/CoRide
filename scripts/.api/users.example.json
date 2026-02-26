@@ -1,0 +1,15 @@
+{
+  "password": "YOUR_PASSWORD",
+  "users": [
+    {
+      "email": "primary@example.com",
+      "primary": true,
+      "label": "primary"
+    },
+    {
+      "email": "other@example.com",
+      "primary": false,
+      "label": "other"
+    }
+  ]
+}
