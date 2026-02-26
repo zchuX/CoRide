@@ -148,48 +148,68 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
     }
   }
 
-  def orderedLocationsFromRecords(trip: TripMetadata, records: List[UserGroupRecord]): List[Location] = {
-    if (records.isEmpty) {
-      return trip.locations
-    }
-
-    // Find trip-level start and destination
-    val groupLocationNames = (records.map(_.start) ++ records.map(_.destination)).toSet
-    val tripStart = trip.locations.find(l => !groupLocationNames.contains(l.locationName))
-    val tripDest = trip.locations.find(l => !groupLocationNames.contains(l.locationName) && Some(l) != tripStart)
-
-    // Original logic for ordering group locations
-    val driverIdOpt = trip.driver
-    val driverGroupOpt = driverIdOpt.flatMap { did =>
-      records.find(_.users.exists(u => u.userId == did))
-    }
-    val driverStart = driverGroupOpt.map(_.start).getOrElse(records.minBy(_.pickupTime).start)
-    val driverDest = driverGroupOpt.map(_.destination).getOrElse(records.maxBy(_.pickupTime).destination)
-    val pickupsOrdered = records.sortBy(_.pickupTime).map(_.start).foldLeft(List.empty[String]) { (acc, s) => if (acc.contains(s)) acc else acc :+ s }
-    val dropoffsOrdered = records.sortBy(_.pickupTime).map(_.destination).distinct
-    val core = (driverStart +: pickupsOrdered.filterNot(_ == driverStart)) ++ dropoffsOrdered.filterNot(_ == driverStart)
-    val groupOrderedNames = core.filterNot(_ == driverDest) :+ driverDest
-
-    // Combine
-    val orderedLocationNames = (tripStart.map(_.locationName).toList ++ groupOrderedNames ++ tripDest.map(_.locationName).toList).distinct
-
-    // Build final list of Location objects
-    val allLocations = (trip.locations ++ records.flatMap { ug =>
-      List(
-        Location(locationName = ug.start, pickupGroups = List(ug.arn), dropOffGroups = Nil, arrived = false, arrivedTime = None),
-        Location(locationName = ug.destination, pickupGroups = Nil, dropOffGroups = List(ug.arn), arrived = false, arrivedTime = None)
-      )
-    }).groupBy(_.locationName).map { case (name, locs) =>
-      val reducedLoc = locs.reduce { (a, b) =>
-        a.copy(
-          pickupGroups = (a.pickupGroups ++ b.pickupGroups).distinct,
-          dropOffGroups = (a.dropOffGroups ++ b.dropOffGroups).distinct
-        )
+  def orderedLocationsFromRecords( 
+      trip: TripMetadata, 
+      groups: List[UserGroupRecord] 
+  ): List[Location] = { 
+  
+    // Helper to merge groups into Location objects 
+    def mergeLocations(locations: Seq[(String, String, String, Long)]): Map[String, Location] = { 
+      // locationName -> Location 
+      locations.foldLeft(Map.empty[String, Location]) { case (acc, (locName, groupArn, kind, time)) => 
+        val existing = acc.getOrElse(locName, Location(locationName = locName)) 
+        val updated = kind match { 
+          case "pickup"  => existing.copy(pickupGroups = existing.pickupGroups :+ groupArn) 
+          case "dropoff" => existing.copy(dropOffGroups = existing.dropOffGroups :+ groupArn) 
+        } 
+        acc + (locName -> updated) 
+      } 
+    } 
+  
+    // --- 1️⃣ Prepare pickups --- 
+    val pickups: Seq[(String, String, String, Long)] = 
+      groups.map(g => (g.start, g.arn, "pickup", g.pickupTime)) 
+    val pickupLocationsMap = mergeLocations(pickups) 
+    val pickupLocationsOrdered = pickups 
+      .sortBy(_._4)                    // ascending by pickupTime 
+      .map(_._1) 
+      .distinct 
+      .map(pickupLocationsMap)         // get Location object 
+  
+    // --- 2️⃣ Prepare dropoffs --- 
+    val dropoffs: Seq[(String, String, String, Long)] = 
+      groups.map(g => (g.destination, g.arn, "dropoff", g.pickupTime)) 
+    val dropoffLocationsMap = mergeLocations(dropoffs) 
+    val dropoffLocationsOrdered = dropoffs 
+      .sortBy(-_._4)                   // descending by pickupTime 
+      .map(_._1) 
+      .distinct 
+      .map(dropoffLocationsMap) 
+  
+    // --- 3️⃣ Start and end from top-level trip.locations --- 
+    val startLocationOpt = trip.locations.headOption 
+    val endLocationOpt = trip.locations.lastOption 
+  
+    // --- 4️⃣ Combine --- 
+    val middleLocations = pickupLocationsOrdered ++ dropoffLocationsOrdered 
+  
+    val finalLocations = (startLocationOpt.toList ++ middleLocations ++ endLocationOpt.toList) 
+      .groupBy(_.locationName)        // remove duplicates 
+      .map { case (locName, locs) =>
+        locs.reduce { (a, b) =>
+          a.copy(
+            pickupGroups = (a.pickupGroups ++ b.pickupGroups).distinct,
+            dropOffGroups = (a.dropOffGroups ++ b.dropOffGroups).distinct
+          )
+        }
       }
-      reducedLoc.locationName -> reducedLoc
-    }.toMap
-    
-    orderedLocationNames.flatMap(allLocations.get)
+      .toList 
+      .sortBy(loc => { 
+        val idx = middleLocations.indexWhere(_.locationName == loc.locationName) 
+        if (idx >= 0) idx else if (startLocationOpt.exists(_.locationName == loc.locationName)) -1 else Int.MaxValue
+      }) 
+  
+    finalLocations 
   }
 
   private def mergeSingleGroupIntoLocations(base: List[Location], start: String, destination: String, gid: String): List[Location] = {
