@@ -1,0 +1,27 @@
+{
+  "name": "corideCDK",
+  "version": "0.1.0",
+  "private": true,
+  "types": "dist/lib/index.d.ts",
+  "main": "dist/lib/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -w -p tsconfig.json",
+    "cdk:synth": "echo 'Use stage packages for synth'",
+    "cdk:deploy": "echo 'Use stage packages for deploy'",
+    "cdk:destroy": "echo 'Use stage packages for destroy'"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.136.0",
+    "constructs": "^10.3.0",
+    "source-map-support": "^0.5.21"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.136.0",
+    "typescript": "^5.5.4",
+    "ts-node": "^10.9.2",
+    "esbuild": "^0.19.12",
+    "@types/node": "^20.11.30",
+    "@types/aws-lambda": "^8.10.137"
+  }
+}

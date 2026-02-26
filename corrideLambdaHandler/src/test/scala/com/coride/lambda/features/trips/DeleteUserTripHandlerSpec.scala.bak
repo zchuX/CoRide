@@ -1,0 +1,13 @@
+package com.coride.lambda.features.trips
+
+import org.scalatest.funsuite.AnyFunSuite
+import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent
+
+class DeleteUserTripHandlerSpec extends AnyFunSuite {
+  test("delete-user-trip returns 401 when token missing") {
+    val event = new APIGatewayProxyRequestEvent()
+    event.setBody("""{"tripArn":"arn:t","groupArn":"arn:g","version":1}""")
+    val resp = DeleteUserTripHandler.handle(event)
+    assert(resp.getStatusCode == 401)
+  }
+}

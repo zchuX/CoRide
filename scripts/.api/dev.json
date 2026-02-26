@@ -1,0 +1,11 @@
+{
+  "stage": "dev",
+  "region": "us-east-1",
+  "restApiId": "ltr38e7hx8",
+  "baseUrl": "https://ltr38e7hx8.execute-api.us-east-1.amazonaws.com/dev",
+  "usagePlanId": "tk057c",
+  "apiKeyValue": "3CDSGzm1IH3q7ixup3hJ84B534K9Fe7Y5NrDoCmr",
+  "cloudFrontDistributionId": "E29ES6P90B8JS6",
+  "cloudFrontDomainName": "d123t4r49p5t32.cloudfront.net",
+  "cloudFrontBaseUrl": "https://d123t4r49p5t32.cloudfront.net"
+}

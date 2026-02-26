@@ -1,0 +1,337 @@
+{
+  "api": "Trip API",
+  "base_url": "https://{api_id}.execute-api.{region}.amazonaws.com/{stage}",
+  "how_to_find_base_url": {
+    "cloudformation_stacks": [
+      "coride-edge-{stage}",
+      "coride-trip-{stage}"
+    ],
+    "outputs": [
+      "ApiEndpoint",
+      "ApiKey"
+    ],
+    "notes": "In dev, API info may also be persisted under scripts/.api/{stage}.json"
+  },
+  "security": {
+    "api_key": {
+      "header": "x-api-key",
+      "required": true,
+      "description": "API Gateway key required for all endpoints"
+    },
+    "bearer_token": {
+      "header": "Authorization: Bearer <id_token>",
+      "required": true,
+      "description": "Cognito ID token required; includes 'sub' claim used as userId"
+    }
+  },
+  "common_headers": {
+    "Content-Type": "application/json",
+    "x-api-key": "string",
+    "Authorization": "Bearer <id_token>"
+  },
+  "versioning": {
+    "mechanism": "Optimistic concurrency via 'version' in request body",
+    "resolution": "If 'version' is omitted, handlers read expected version from DAO",
+    "conflict_response": "409 Version conflict",
+    "fields": {
+      "tripExpectedVersion": "From body.version or DAO",
+      "groupExpectedVersion": "From body.version or DAO",
+      "userTripExpectedVersion": "From body.version or DAO"
+    }
+  },
+  "status_values": ["Invitation", "Upcoming", "InProgress", "Completed", "Cancelled"],
+  "schemas": {
+    "Trip": {
+      "description": "Normalized trip representation returned by most trip endpoints",
+      "fields": {
+        "tripArn": "string",
+        "startDate": "number (epoch millis)",
+        "status": "string",
+        "startTime": "string|null",
+        "completionDate": "number|null",
+        "currentStop": "string|null",
+        "driver": "string|null",
+        "driverPhotoUrl": "string|null",
+        "driverConfirmed": "boolean|null",
+        "notes": "string|null",
+        "car": {
+          "plateNumber": "string|null",
+          "color": "string|null",
+          "model": "string|null"
+        },
+        "locations": [
+          {
+            "locationName": "string",
+            "pickupGroups": ["groupArn"],
+            "dropOffGroups": ["groupArn"]
+          }
+        ],
+        "usergroups": [
+          {
+            "groupId": "groupArn",
+            "groupName": "string",
+            "groupSize": "number",
+            "numAnonymousUser": "number (currently always 0)",
+            "groupConfirmed": "boolean"
+          }
+        ],
+        "users": [
+          {
+            "userId": "string|null",
+            "name": "string",
+            "imageUrl": "string|null"
+          }
+        ],
+        "version": "number"
+      }
+    },
+    "UserGroupRecord": {
+      "description": "Full group representation returned by group endpoints",
+      "fields": {
+        "groupArn": "string",
+        "tripArn": "string",
+        "groupName": "string",
+        "start": "string",
+        "destination": "string",
+        "pickupTime": "number (epoch millis)",
+        "users": [
+          {
+            "userId": "string",
+            "name": "string",
+            "imageUrl": "string|null",
+            "accept": "boolean"
+          }
+        ],
+        "version": "number"
+      }
+    },
+    "GetUserTripsItem": {
+      "description": "Trip list item extends Trip with per-user fields",
+      "fields": {
+        "...Trip": "All Trip fields",
+        "userTripArn": "string",
+        "userTripStatus": "string",
+        "userStatusKey": "string"
+      }
+    },
+    "GetTripById": {
+      "description": "Wrapper for get-by-id endpoint",
+      "fields": {
+        "trip": "Trip",
+        "status": {
+          "userTripStatus": "string|null"
+        }
+      }
+    }
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/trips",
+      "summary": "List trips for current user",
+      "auth": { "api_key": true, "bearer_token": true },
+      "query_params": {
+        "status": "completed|uncompleted|all (mutually exclusive with 'completed')",
+        "completed": "true|false (alternative to 'status')"
+      },
+      "responses": {
+        "200": { "description": "Returns { trips: GetUserTripsItem[] }" },
+        "400": { "description": "Invalid status or missing 'sub' claim" },
+        "401": { "description": "Missing/invalid bearer token" }
+      },
+      "notes": "Defaults to uncompleted (Invitation, Upcoming, InProgress) when no query provided"
+    },
+    {
+      "method": "GET",
+      "path": "/api/trips/{tripArn}",
+      "summary": "Get trip details by ARN",
+      "auth": { "api_key": true, "bearer_token": true },
+      "responses": {
+        "200": { "description": "Returns GetTripById" },
+        "401": { "description": "Unauthorized" },
+        "404": { "description": "Trip not found" }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/trips",
+      "summary": "Create a trip",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "required": ["tripArn", "startDate", "status"],
+        "optional": ["startTime", "completionDate", "currentStop", "driver", "driverPhotoUrl", "driverConfirmed", "car", "users", "notes", "groups"],
+        "groups.item": {
+          "arn": "string",
+          "groupName": "string",
+          "start": "string",
+          "destination": "string",
+          "pickupTime": "number",
+          "users": [ { "userId": "string", "name": "string", "imageUrl": "string|null", "accept": "boolean (default false)" } ]
+        }
+      },
+      "responses": {
+        "200": { "description": "Returns Trip (created)" },
+        "401": { "description": "Unauthorized" },
+        "500": { "description": "Missing required fields -> Internal Server Error with message 'Missing field: <name>'" }
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/trips",
+      "summary": "Update trip metadata",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "required": ["tripArn"],
+        "optional": ["startDate", "startTime", "completionDate", "status", "currentStop", "driver", "driverPhotoUrl", "driverConfirmed", "notes", "version"]
+      },
+      "responses": {
+        "200": { "description": "Returns Trip (updated)" },
+        "401": { "description": "Unauthorized" },
+        "403": { "description": "Only driver or group members may update" },
+        "404": { "description": "Trip not found" },
+        "409": { "description": "Version conflict" }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/trips/{tripArn}/cancel",
+      "summary": "Cancel a trip (driver only)",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "optional": ["version"]
+      },
+      "responses": {
+        "200": { "description": "Returns Trip (status=Cancelled, completionDate set)" },
+        "401": { "description": "Unauthorized" },
+        "403": { "description": "Only driver can cancel" },
+        "404": { "description": "Trip not found" },
+        "409": { "description": "Version conflict" }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/trips/{tripArn}/leave",
+      "summary": "Leave my group within a trip",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "optional": ["version"]
+      },
+      "responses": {
+        "200": { "description": "Returns UserGroupRecord (updated)" },
+        "401": { "description": "Unauthorized" },
+        "404": { "description": "Trip not found or user not in any group for this trip" },
+        "409": { "description": "Version conflict" }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/trips/become-driver",
+      "summary": "Assign the caller as driver and confirm",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "required": ["tripArn"],
+        "optional": ["version"]
+      },
+      "responses": {
+        "200": { "description": "Returns Trip (driver set, driverConfirmed=true)" },
+        "401": { "description": "Unauthorized" },
+        "404": { "description": "Trip not found" },
+        "409": { "description": "Version conflict" }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/trips/location/arrived",
+      "summary": "Toggle arrival state for a location",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "required": ["tripArn", "locationName"],
+        "optional": ["arrived", "version"]
+      },
+      "responses": {
+        "200": { "description": "Returns Trip (currentStop updated)" },
+        "401": { "description": "Unauthorized" },
+        "403": { "description": "Trip not started OR caller not allowed for location" },
+        "404": { "description": "Trip not found" },
+        "409": { "description": "Version conflict" }
+      },
+      "notes": "Allowed if caller is driver or a member of a group whose start/destination equals locationName"
+    },
+    {
+      "method": "POST",
+      "path": "/api/usergroup",
+      "summary": "Create a user group on a trip",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "required": ["tripArn", "groupArn", "groupName", "start", "destination", "pickupTime"],
+        "optional": ["users", "version"],
+        "users.item": { "userId": "string", "name": "string", "imageUrl": "string|null", "accept": "boolean" }
+      },
+      "responses": {
+        "200": { "description": "Returns UserGroupRecord (created)" },
+        "401": { "description": "Unauthorized" },
+        "409": { "description": "Group exists or version conflict" },
+        "500": { "description": "Missing required fields -> Internal Server Error with message 'Missing field: <name>'" }
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/usergroup",
+      "summary": "Update a user group",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "required": ["groupArn"],
+        "optional": ["groupName", "start", "destination", "pickupTime", "users", "version"],
+        "users.item": { "userId": "string", "name": "string", "imageUrl": "string|null", "accept": "boolean" }
+      },
+      "responses": {
+        "200": { "description": "Returns UserGroupRecord (updated)" },
+        "401": { "description": "Unauthorized" },
+        "403": { "description": "Only current group members may update; acceptance restricted to self" },
+        "404": { "description": "Group not found or no Invitation userTrip on accept" },
+        "409": { "description": "Version conflict" }
+      },
+      "notes": "If a user changes their own 'accept' from false to true, backend validates an existing Invitation userTrip and performs acceptance atomically"
+    },
+    {
+      "method": "POST",
+      "path": "/api/usergroup/join",
+      "summary": "Join a user group as the caller",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "required": ["tripArn", "groupArn"],
+        "optional": ["name", "imageUrl", "version"]
+      },
+      "responses": {
+        "200": { "description": "Returns UserGroupRecord (updated)" },
+        "401": { "description": "Unauthorized" },
+        "403": { "description": "No anonymous spot available on the trip" },
+        "404": { "description": "Trip or group not found" },
+        "409": { "description": "Already a member or version conflict" }
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/usergroup/trip",
+      "summary": "Delete my userTrip record for a group",
+      "auth": { "api_key": true, "bearer_token": true },
+      "request_body_schema": {
+        "required": ["tripArn", "groupArn"]
+      },
+      "responses": {
+        "200": { "description": "{ ok: true }" },
+        "401": { "description": "Unauthorized" },
+        "409": { "description": "Record missing or delete failed" }
+      }
+    }
+  ],
+  "examples": {
+    "headers": {
+      "Content-Type": "application/json",
+      "x-api-key": "<API_KEY>",
+      "Authorization": "Bearer <ID_TOKEN>"
+    },
+    "curl_list_trips": "curl -s -H 'x-api-key: <API_KEY>' -H 'Authorization: Bearer <ID_TOKEN>' '<BASE_URL>/api/trips?status=uncompleted'",
+    "curl_cancel_trip": "curl -s -X POST -H 'x-api-key: <API_KEY>' -H 'Authorization: Bearer <ID_TOKEN>' -H 'Content-Type: application/json' '<BASE_URL>/api/trips/<TRIP_ARN>/cancel' -d '{\"version\": <VERSION>}'"
+  }
+}

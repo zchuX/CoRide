@@ -1,0 +1,16 @@
+{
+  "name": "userDAO",
+  "version": "0.1.0",
+  "private": true,
+  "types": "dist/index.d.ts",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -w -p tsconfig.json"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.11.30"
+  }
+}

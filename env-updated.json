@@ -1,0 +1,27 @@
+{
+  "Variables": {
+    "TRIPMETADATA_TABLE": "Coride-dev-TripMetadata",
+    "RESET_SEND_LIMIT": "2",
+    "USERS_TABLE": "Coride-dev-Users",
+    "OTP_EMAIL_WINDOW": "60",
+    "RESET_CONFIRM_LIMIT": "10",
+    "USER_POOL_ID": "us-east-1_K4C9ZoHum",
+    "RESET_SEND_WINDOW": "60",
+    "CORS_ALLOW_ORIGIN": "*",
+    "RATE_LIMIT_TABLE": "Coride-dev-RateLimit",
+    "TRIP_METADATA_TABLE": "Coride-dev-TripMetadata",
+    "RESET_CONFIRM_WINDOW": "300",
+    "USERS_TABLE_NAME": "Coride-dev-Users",
+    "LOGIN_LIMIT": "5",
+    "OTP_EMAIL_LIMIT": "2",
+    "USERGROUPS_TABLE": "Coride-dev-UserGroups",
+    "OTP_PHONE_LIMIT": "2",
+    "USER_CONTACT_INDEX_TABLE_NAME": "Coride-dev-UserContactIndex",
+    "USER_TRIPS_TABLE": "Coride-dev-UserTrips",
+    "LOGIN_WINDOW": "60",
+    "USER_POOL_CLIENT_ID": "6e5hfqkm767j3hoi8cpfmtt3r1",
+    "USERTRIPS_TABLE": "Coride-dev-UserTrips",
+    "OTP_PHONE_WINDOW": "60",
+    "DEBUG_BYPASS_JWT": "true"
+  }
+}

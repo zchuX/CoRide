@@ -1,0 +1,23 @@
+{
+  "app": "npx ts-node --project tsconfig.json bin/app.ts",
+  "context": {
+    "lambdaJar": "../corrideLambdaHandler/target/scala-2.13/corrideLambdaHandler-assembly.jar",
+    "sesIdentityArn": "arn:aws:ses:us-east-1:971422694612:identity/zumoride.com",
+    "enableDataTrace": true,
+    "throttlingRateLimit": 10,
+    "throttlingBurstLimit": 20,
+    "clientThrottlingRateLimit": 1,
+    "clientThrottlingBurstLimit": 2,
+    "wafRateLimit": 100,
+    "LOGIN_LIMIT": 5,
+    "LOGIN_WINDOW": 60,
+    "OTP_EMAIL_LIMIT": 2,
+    "OTP_EMAIL_WINDOW": 60,
+    "OTP_PHONE_LIMIT": 2,
+    "OTP_PHONE_WINDOW": 60,
+    "RESET_SEND_LIMIT": 2,
+    "RESET_SEND_WINDOW": 60,
+    "RESET_CONFIRM_LIMIT": 10,
+    "RESET_CONFIRM_WINDOW": 300
+  }
+}

@@ -1,0 +1,51 @@
+# ==============================
+# Node
+# ==============================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files (be careful if you share them)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+coverage/
+
+# ==============================
+# Scala / sbt
+# ==============================
+**/target/
+project/target/
+project/project/
+.bloop/
+.metals/
+.scala-build/
+
+# ==============================
+# AWS CDK
+# ==============================
+**/cdk.out*/
+
+# ==============================
+# IDE
+# ==============================
+.vscode/
+.idea/
+*.iml
+
+# ==============================
+# Logs
+# ==============================
+*.log
+
+# ==============================
+# OS
+# ==============================
+.DS_Store
+Thumbs.db
