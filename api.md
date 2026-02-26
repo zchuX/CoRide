@@ -44,7 +44,7 @@
         "method": "GET",
         "path": "/trips",
         "queryParams": {
-          "status": {"type": "String", "description": "Filter trips by status (completed, uncompleted, all)."}
+          "completed": {"type": "Boolean", "required": true, "description": "true = completed trips, false = uncompleted trips."}
         }
       },
       "response": {

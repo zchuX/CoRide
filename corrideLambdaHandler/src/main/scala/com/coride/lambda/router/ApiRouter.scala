@@ -102,6 +102,10 @@ class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGro
           val locationName = parts(1).stripSuffix("/arrival")
           FlipLocationArrivalHandler.handle(event)
 
+        case ("GET", p) if p.startsWith("/user-groups/") || p.startsWith("/api/user-groups/") =>
+          val groupArn = p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/")
+          GetUserGroupHandler.handle(event, groupArn)
+
         case ("PUT", p) if p.startsWith("/user-groups/") || p.startsWith("/api/user-groups/") =>
           val groupArn = p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/")
           UpdateUserGroupHandler.handle(event)

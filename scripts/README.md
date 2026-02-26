@@ -16,20 +16,33 @@ This folder contains helper scripts to build, deploy, and call the API across st
 Use the deploy script; do not call `npx cdk deploy` yourself.
 
 ```
-./scripts/deploy.sh --stage dev|staging|prod [--build-scala all|handler|daos|none] [--deploy all|infra|code|none]
+./scripts/deploy.sh --stage dev|staging|prod [--build-scala all|handler|daos|none] [--deploy all|infra|lambda|code|none]
 ```
 
 - `--stage` (required): target stage
-- `--build-scala` (default `all`): which Scala modules to test/build
-  - `all` = `userDAO`, `rateLimitDAO`, `corrideLambdaHandler`
-  - `handler` = only `corrideLambdaHandler`
-  - `daos` = only DAOs
+- `--build-scala` (default `all`): which Scala modules to test/build. DAOs are never deployed on their own; they are compiled into the Lambda handler jar.
+  - `all` = build `tripDAO`, `userDAO`, `rateLimitDAO` (and publish to local Ivy), then build `corrideLambdaHandler` so the Lambda jar includes the latest DAOs
+  - `handler` = only build `corrideLambdaHandler` (uses whatever DAO versions are in local Ivy or in its dependencies)
+  - `daos` = only build and publish the three DAOs to local Ivy (no handler build). Useful for local dev when you want to refresh DAO jars and will build/run the handler separately (e.g. from an IDE). For any deploy you need the handler built too, so use `all` or `handler`.
   - `none` = skip Scala build
 - `--deploy` (default `all`): what to deploy
-  - `all` = install/build CDK app(s) and deploy stacks
-  - `infra` = deploy stacks (installs/builds CDK first)
-  - `code` = reserved for code-only updates (if applicable)
+  - `all` = install/build CDK app(s) and deploy all stacks
+  - `infra` = same as all (deploy all stacks)
+  - `lambda` = deploy only the trip stack (API Lambda). Use when **only Lambda handler code changed**; faster than full deploy.
+  - `code` = skip CDK deployment
   - `none` = no deployment
+
+### Deploy only Lambda (handler-only changes)
+
+When you changed only code in `corrideLambdaHandler` (e.g. route or handler logic) and did not change any DAO or CDK infra:
+
+1. Build the handler and deploy the trip stack:
+   ```bash
+   ./scripts/deploy.sh --stage dev --build-scala handler --deploy lambda
+   ```
+2. This runs tests and assembly for `corrideLambdaHandler`, then deploys only the `coride-trip-<stage>` stack. It does not rebuild DAOs or deploy auth/edge/feedback stacks.
+
+If you changed `tripDAO`, `userDAO`, or `rateLimitDAO`, use `--build-scala all` (and `--deploy all` or `--deploy lambda`) so the handler gets the updated DAO jars.
 
 ### What gets persisted post-deploy
 
@@ -150,7 +163,7 @@ Defaults:
 After a workflow run with `--save-session`, any one-off call can use the stored token:
 
 ```
-./easy-api.sh --stage dev --session GET api/trips '{}'
+./easy-api.sh --stage dev --session GET "api/trips?completed=false" '{}'
 ```
 
 **Create a user group** (e.g. with 2 anonymous users) on an existing trip. Use your stored session (bearer token) for any authenticated call:

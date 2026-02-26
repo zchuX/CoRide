@@ -21,28 +21,23 @@ object GetUserTripsHandler {
     val tokenOpt = TokenUtils.bearer(event.getHeaders)
     if (tokenOpt.isEmpty) return Responses.json(401, """{"error":"Unauthorized","message":"Missing bearer token"}""")
 
-    val subOpt = tokenOpt.flatMap(tok => jwt.verifyIdToken(tok).map(_.sub))
-    val userId = subOpt.getOrElse(return Responses.json(400, """{"error":"Bad Request","message":"Missing 'sub' claim"}"""))
-    // Determine filter from query parameters: status=uncompleted|completed|all, or completed=true|false
+    val verifiedOpt = tokenOpt.flatMap(tok => jwt.verifyIdToken(tok))
+    val verified = verifiedOpt.getOrElse(return Responses.json(400, """{"error":"Bad Request","message":"Invalid or missing token claims"}"""))
+    // Caller identity is always from JWT (verified.sub). UserTrips are keyed by userStatusKey = "{userArn}-uncompleted" and userArn = Cognito sub.
+    val arnsToQuery = List(verified.sub)
+    // Required query parameter: completed (boolean) — true = completed trips, false = uncompleted
     val qs = Option(event.getQueryStringParameters).map(_.asScala.toMap).getOrElse(Map.empty)
-    val statusParamOpt = qs.get("status").map(_.toLowerCase)
-    val completedParamOpt = qs.get("completed").map(_.toLowerCase)
-
-    val statuses: List[String] = statusParamOpt match {
-      case Some("completed") => List("completed")
-      case Some("uncompleted") => List("uncompleted")
-      case Some("all") => List("completed", "uncompleted")
-      case Some(_) => return Responses.json(400, """{"error":"Bad Request","message":"Invalid 'status' value"}""")
-      case None =>
-        completedParamOpt match {
-          case Some("true") => List("completed")
-          case Some("false") => List("uncompleted")
-          case Some(_) => return Responses.json(400, """{"error":"Bad Request","message":"Invalid 'completed' boolean"}""")
-          case None => List("uncompleted")
-        }
+    val completedOpt = qs.get("completed").map(_.toLowerCase)
+    val tripStatus = completedOpt match {
+      case Some("true") => "completed"
+      case Some("false") => "uncompleted"
+      case None => return Responses.json(400, """{"error":"Bad Request","message":"Query parameter 'completed' is required (true or false)"}""")
+      case _ => return Responses.json(400, """{"error":"Bad Request","message":"Invalid 'completed' value; use true or false"}""")
     }
 
-    val trips: List[UserTrip] = statuses.flatMap(st => dao.queryUserTripsByStatus(userId, st, None, 200, ascending = false))
+    val trips: List[UserTrip] = arnsToQuery.flatMap(arn => dao.queryUserTripsByStatus(arn, tripStatus, None, 200, ascending = false))
+      .foldLeft(List.empty[UserTrip]) { (acc, ut) => if (acc.exists(_.arn == ut.arn)) acc else acc :+ ut }
+      .sortBy(ut => (-ut.tripDateTime, ut.arn))
 
     // Collect full trip metadata for each user trip
     val root: ObjectNode = mapper.createObjectNode()

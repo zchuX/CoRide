@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Usage:
-# scripts/deploy.sh --stage dev|staging|prod [--build-scala all|handler|daos|none] [--deploy all|infra|code|none] [--recreate]
+# scripts/deploy.sh --stage dev|staging|prod [--build-scala all|handler|daos|none] [--deploy all|infra|lambda|code|none] [--recreate]
 # Defaults: --build-scala all, --deploy all
+# Use --deploy lambda to deploy only the API Lambda (trip stack); faster when only handler code changed.
 
 STAGE=""
 BUILD_SCALA="all"
@@ -21,7 +22,7 @@ while [[ $# -gt 0 ]]; do
     --recreate)
       RECREATE="true"; shift 1;;
     -h|--help)
-      echo "Usage: $0 --stage dev|staging|prod [--build-scala all|handler|daos|none] [--deploy all|infra|code|none] [--recreate]"
+      echo "Usage: $0 --stage dev|staging|prod [--build-scala all|handler|daos|none] [--deploy all|infra|lambda|code|none] [--recreate]"
       exit 0;;
     *)
       echo "Unknown argument: $1"; exit 1;;
@@ -83,6 +84,8 @@ case "$STAGE" in
     echo "Unknown stage: $STAGE"; exit 1;;
 esac
 
+TRIP_STACK="coride-trip-${STAGE}"
+
 if [[ "$DEPLOY_MODE" == "all" || "$DEPLOY_MODE" == "infra" ]]; then
   echo "[+] Installing and building CDK app in $cdk_dir"
   (cd "$cdk_dir" && npm install && npm run build)
@@ -93,6 +96,11 @@ if [[ "$DEPLOY_MODE" == "all" || "$DEPLOY_MODE" == "infra" ]]; then
   fi
   echo "[+] Deploying CDK stacks for stage $STAGE (all stacks)"
   (cd "$cdk_dir" && npx cdk deploy --all --require-approval never)
+elif [[ "$DEPLOY_MODE" == "lambda" ]]; then
+  echo "[+] Lambda-only deploy: building CDK app and deploying $TRIP_STACK"
+  (cd "$cdk_dir" && npm install && npm run build)
+  (cd "$cdk_dir" && npx cdk deploy "$TRIP_STACK" --require-approval never)
+  echo "[+] Skipping API endpoint persistence (use --deploy all to refresh scripts/.api/<stage>.json)"
 
   echo "[+] Persisting API endpoint and key for stage $STAGE"
   # Resolve region for AWS CLI queries: prefer env, else infer from stage

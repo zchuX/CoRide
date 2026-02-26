@@ -34,14 +34,16 @@ object MeHandler {
     uOpt.getOrElse(throw new UnauthorizedException("User profile not initialized"))
   }
 
+  private def jsonStr(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r") + "\""
+
   def handle(event: APIGatewayProxyRequestEvent): APIGatewayProxyResponseEvent = {
     try {
       val u = decode(event)
-      val emailVal = u.email.map(e => s"\"$e\"").getOrElse("null")
-      val phoneVal = u.phone.map(p => s"\"$p\"").getOrElse("null")
-      val descVal = u.description.map(d => s"\"$d\"").getOrElse("null")
-      val photoVal = u.photoUrl.map(p => s"\"$p\"").getOrElse("null")
-      val body = s"""{"status":"ok","user":{"userArn":""" + u.userArn + ""","name":""" + u.name + ""","email":""" + emailVal + ""","phone_number": """ + phoneVal + ""","description": """ + descVal + ""","photoUrl": """ + photoVal + ""","totalPassengerDelivered": """ + u.totalPassengerDelivered + """, "totalCarpoolJoined": """ + u.totalCarpoolJoined + """}}"""
+      val emailVal = u.email.map(e => jsonStr(e)).getOrElse("null")
+      val phoneVal = u.phone.map(p => jsonStr(p)).getOrElse("null")
+      val descVal = u.description.map(d => jsonStr(d)).getOrElse("null")
+      val photoVal = u.photoUrl.map(p => jsonStr(p)).getOrElse("null")
+      val body = s"""{"status":"ok","user":{"userArn":${jsonStr(u.userArn)},"name":${jsonStr(u.name)},"email":$emailVal,"phone_number":$phoneVal,"description":$descVal,"photoUrl":$photoVal,"totalPassengerDelivered":${u.totalPassengerDelivered},"totalCarpoolJoined":${u.totalCarpoolJoined}}}"""
       Responses.json(200, body)
     } catch {
       case e: UnauthorizedException => Responses.json(401, s"""{"error":"Unauthorized","message":"${e.getMessage}"}""")

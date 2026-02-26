@@ -56,13 +56,15 @@ object VerifyCodeHandler {
     if (preStatus == "CONFIRMED") {
       val attrs = preAdminUser.getUserAttributes
       val arr = attrs.toArray(new Array[com.amazonaws.services.cognitoidp.model.AttributeType](attrs.size()))
+      val subAttr = arr.find(_.getName == "sub").map(_.getValue)
       val emailAttr = arr.find(_.getName == "email").map(_.getValue)
       val phoneAttr = arr.find(_.getName == "phone_number").map(_.getValue)
       val nameAttr = arr.find(_.getName == "name").map(_.getValue)
+      // userArn = Cognito sub so JWT sub matches our DB; no lookup needed for auth
+      val userArn = subAttr.filter(_.nonEmpty).getOrElse(preAdminUser.getUsername)
 
       val user = User(
-        // Persist using Cognito's canonical username to match JWT claims
-        userArn = preAdminUser.getUsername,
+        userArn = userArn,
         name = nameAttr.getOrElse(username),
         email = Option(emailAttr.orNull),
         phone = Option(phoneAttr.orNull)
@@ -89,17 +91,18 @@ object VerifyCodeHandler {
     ddb.deleteItem(DeleteItemRequest.builder().tableName(rateTableName).key(delKey).build())
 
     // Persist Users and contact index only AFTER successful OTP confirmation
-    // Retrieve attributes (requires admin privileges; uses configured USER_POOL_ID)
     val adminUser = cognito.adminGetUser(username)
     val attrs = adminUser.getUserAttributes
     val arr = attrs.toArray(new Array[com.amazonaws.services.cognitoidp.model.AttributeType](attrs.size()))
+    val subAttr = arr.find(_.getName == "sub").map(_.getValue)
     val emailAttr2 = arr.find(_.getName == "email").map(_.getValue)
     val phoneAttr2 = arr.find(_.getName == "phone_number").map(_.getValue)
     val nameAttr2 = arr.find(_.getName == "name").map(_.getValue)
+    // userArn = Cognito sub so JWT sub matches our DB; caller identity is always from token
+    val userArn = subAttr.filter(_.nonEmpty).getOrElse(adminUser.getUsername)
 
     val user = User(
-      // Persist using Cognito's canonical username to match JWT claims
-      userArn = adminUser.getUsername,
+      userArn = userArn,
       name = nameAttr2.getOrElse(username),
       email = Option(emailAttr2.orNull),
       phone = Option(phoneAttr2.orNull)

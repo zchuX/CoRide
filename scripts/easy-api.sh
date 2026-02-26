@@ -462,8 +462,10 @@ if [[ ${#EXTRA_HEADERS[@]} -gt 0 ]]; then
   done
 fi
 
-# Payload: allow @file.json or raw JSON
-curl_cmd+=( --data "$PAYLOAD" )
+# Payload: only for methods that typically have a body
+if [[ "$METHOD" != "GET" && "$METHOD" != "DELETE" ]]; then
+  curl_cmd+=( --data "$PAYLOAD" )
+fi
 
 echo "[+] Calling: $METHOD $URL"
 "${curl_cmd[@]}"

@@ -905,7 +905,7 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
   def queryUserTripsByStatus(userId: String, tripStatus: String, fromDateTime: Option[Long] = None, limit: Int = 50, ascending: Boolean = false): List[UserTrip] = {
     // tripStatus is expected to be "completed" or "uncompleted"
     val usk = s"${userId}-${tripStatus}"
-    val names = Map("#usk" -> "userStatusKey", "#dt" -> "tripDateTime").asJava
+    val names = if (fromDateTime.isDefined) Map("#usk" -> "userStatusKey", "#dt" -> "tripDateTime").asJava else Map("#usk" -> "userStatusKey").asJava
     val valuesBase = new java.util.HashMap[String, AttributeValue]()
     valuesBase.put(":usk", s(usk))
     val kce = new StringBuilder("#usk = :usk")

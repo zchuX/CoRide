@@ -28,8 +28,9 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
   def handle(event: APIGatewayProxyRequestEvent): APIGatewayProxyResponseEvent = {
     // Require authenticated user
     val tokenOpt = TokenUtils.bearer(event.getHeaders)
-    val userIdOpt = tokenOpt.flatMap(tok => jwt.verifyIdToken(tok).map(_.sub))
-    if (userIdOpt.isEmpty) return Responses.json(401, """{"error":"Unauthorized"}""")
+    val verifiedOpt = tokenOpt.flatMap(tok => jwt.verifyIdToken(tok))
+    if (verifiedOpt.isEmpty) return Responses.json(401, """{"error":"Unauthorized"}""")
+    val verified = verifiedOpt.get
 
     val node = try { JsonUtils.parse(event.getBody) } catch {
       case e: Throwable =>
@@ -59,7 +60,19 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
       )
     }
 
-    val driverIdOpt = Option(node.get("driver")).filter(n => n != null && !n.isNull).map(_.asText())
+    val keyOpt = verified.username.filter(_.nonEmpty).orElse(Some(verified.sub))
+    val currentUserArn = keyOpt.flatMap(userDao.getUser).map(_.userArn)
+      .orElse(verified.email.flatMap(userDao.getUserByEmail).map(_.userArn))
+      .getOrElse(verified.sub)
+    var driverIdOpt = Option(node.get("driver")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty)
+    // Authorization: only the caller can be the driver; never accept a client-supplied userId for another user (e.g. friend)
+    driverIdOpt.foreach { driverId =>
+      if (driverId != verified.sub && driverId != currentUserArn) {
+        return Responses.json(403, """{"error":"Forbidden","message":"Driver must be the authenticated user"}""")
+      }
+    }
+    // When client sends driver-only trip (groups empty) but omits driver, treat current user as driver
+    if (driverIdOpt.isEmpty && (!node.has("groups") || node.get("groups").isEmpty)) driverIdOpt = Some(verified.sub)
     val driverOpt = driverIdOpt.flatMap(userDao.getUser)
 
     // Trip-level start/destination: evaluate and dedupe (order: start then destination)
@@ -131,7 +144,7 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
       }
 
     // Ensure the acting user is marked as confirmed in any provided group.
-    val actingUserId = userIdOpt.get
+    val actingUserId = currentUserArn
     val groupsAdjusted: List[UserGroupRecord] = groups.map { g =>
       val updatedUsers = g.users.map { u =>
         if (u.userId == actingUserId) u.copy(accept = true) else u
