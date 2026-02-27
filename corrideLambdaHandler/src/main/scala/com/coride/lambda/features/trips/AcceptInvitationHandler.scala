@@ -1,7 +1,7 @@
 package com.coride.lambda.features.trips
 
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
-import com.coride.lambda.util.{Responses, JsonUtils, VersioningUtils, TokenUtils, JwtUtils}
+import com.coride.lambda.util.{Responses, TokenUtils, JwtUtils}
 import com.coride.tripdao.TripDAO
 import com.fasterxml.jackson.databind.ObjectMapper
 
@@ -30,14 +30,13 @@ object AcceptInvitationHandler {
           return Responses.json(400, """{"error":"Bad Request","message":"Invitation already accepted"}""")
         }
 
-        val expectedGroup = VersioningUtils.groupExpectedVersion(event, dao, groupArn)
-        val utArn = s"${g.tripArn}#${g.arn}#${userId}"
+        val utArn = dao.userTripArn(g.tripArn, userId)
         dao.getUserTrip(utArn) match {
           case Some(ut) if ut.tripStatus.equalsIgnoreCase("Invitation") =>
             try {
-              dao.acceptUserInvitation(g.tripArn, g.arn, userId, expectedGroup)
+              dao.acceptUserInvitation(g.tripArn, g.arn, userId, g.version)
               val updatedGroup = dao.getUserGroup(groupArn).get
-              Responses.json(200, mapper.writeValueAsString(updatedGroup))
+              Responses.json(200, mapper.writeValueAsString(GetUserTripsHandler.groupToJson(updatedGroup)))
             } catch {
               case _: Throwable => Responses.json(409, """{"error":"Version conflict"}""")
             }

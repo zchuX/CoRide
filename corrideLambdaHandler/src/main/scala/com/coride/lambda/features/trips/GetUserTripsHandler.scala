@@ -2,7 +2,6 @@ package com.coride.lambda.features.trips
 
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
 import com.coride.lambda.util.{Responses, JsonUtils, TokenUtils, JwtUtils}
-import com.coride.lambda.dao.UserGroupsDAO
 import com.coride.tripdao.{TripDAO, TripMetadata, UserTrip, UserGroupRecord, GroupUser}
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.{ArrayNode, ObjectNode}
@@ -11,7 +10,6 @@ import scala.jdk.CollectionConverters._
 object GetUserTripsHandler {
   private val dao = TripDAO()
   private val mapper = new ObjectMapper()
-  private val groupsDAO = new UserGroupsDAO()
   private val userPoolId: String = Option(System.getenv("USER_POOL_ID")).getOrElse("")
   private val awsRegion: String = Option(System.getenv("AWS_REGION")).getOrElse("us-east-1")
   private val userPoolClientId: String = Option(System.getenv("USER_POOL_CLIENT_ID")).getOrElse("")
@@ -77,22 +75,19 @@ object GetUserTripsHandler {
     if (t.driverConfirmed.isDefined) node.put("driverConfirmed", t.driverConfirmed.get)
     if (t.notes.isDefined) node.put("notes", t.notes.get)
 
-    // Reconstruct usergroups and locations from UserGroupRecord listings via local query
-    val groups = listUserGroupRecordsByTripArn(t.tripArn)
+    // Use stored locations directly (pickupGroups/dropOffGroups are group names for human-readable payload)
     val locs = mapper.createArrayNode()
-    val byName = scala.collection.mutable.Map.empty[String, (scala.collection.mutable.Set[String], scala.collection.mutable.Set[String])]
-    groups.foreach { g =>
-      val sEntry = byName.getOrElseUpdate(g.start, (scala.collection.mutable.Set.empty[String], scala.collection.mutable.Set.empty[String]))
-      sEntry._1 += g.arn
-      val dEntry = byName.getOrElseUpdate(g.destination, (scala.collection.mutable.Set.empty[String], scala.collection.mutable.Set.empty[String]))
-      dEntry._2 += g.arn
-    }
-    byName.keys.toList.sorted.foreach { name =>
-      val (pickups, drops) = byName(name)
+    t.locations.foreach { loc =>
       val ln = mapper.createObjectNode()
-      ln.put("locationName", name)
-      val pickupsArr = mapper.createArrayNode(); pickups.toList.sorted.foreach(ga => pickupsArr.add(ga)); ln.set("pickupGroups", pickupsArr)
-      val dropsArr = mapper.createArrayNode(); drops.toList.sorted.foreach(ga => dropsArr.add(ga)); ln.set("dropOffGroups", dropsArr)
+      ln.put("locationName", loc.locationName)
+      val pickupsArr = mapper.createArrayNode()
+      loc.pickupGroups.sorted.foreach(name => pickupsArr.add(name))
+      ln.set("pickupGroups", pickupsArr)
+      val dropsArr = mapper.createArrayNode()
+      loc.dropOffGroups.sorted.foreach(name => dropsArr.add(name))
+      ln.set("dropOffGroups", dropsArr)
+      ln.put("arrived", loc.arrived)
+      if (loc.arrivedTime.isDefined) ln.put("arrivedTime", loc.arrivedTime.get)
       locs.add(ln)
     }
     node.set("locations", locs)
@@ -106,13 +101,13 @@ object GetUserTripsHandler {
       node.set("car", cn)
     }
 
-    // Build usergroups summary from UserGroupRecord listings
+    // Use stored usergroups summary from trip metadata
     val ugArr = mapper.createArrayNode()
-    groups.foreach { gr =>
+    t.usergroups.getOrElse(Nil).foreach { ug =>
       val gn = mapper.createObjectNode()
-      gn.put("groupId", gr.arn)
-      gn.put("groupName", gr.groupName)
-      gn.put("groupSize", gr.users.size + gr.numAnonymousUsers)
+      gn.put("groupId", ug.groupId)
+      gn.put("groupName", ug.groupName)
+      gn.put("groupSize", ug.groupSize)
       ugArr.add(gn)
     }
     node.set("usergroups", ugArr)
@@ -134,9 +129,6 @@ object GetUserTripsHandler {
     node.put("version", t.version)
     node
   }
-
-  // Local GSI query helper to list user groups by tripArn
-  private def listUserGroupRecordsByTripArn(tripArn: String, limit: Int = 100): List[UserGroupRecord] = groupsDAO.listUserGroupRecordsByTripArn(tripArn, limit)
 
   def groupToJson(g: UserGroupRecord): ObjectNode = {
     val gn = mapper.createObjectNode()

@@ -129,8 +129,8 @@ class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGro
           val tripArn = p.stripPrefix("/api/trips/").stripSuffix("/leave")
           LeaveTripHandler.handle(event, tripArn)
 
-        case ("POST", p) if p.matches("/trips/.+/driver") =>
-          val tripArn = p.stripPrefix("/trips/").stripSuffix("/driver")
+        case ("POST", p) if p.matches("/api/trips/.+/driver") =>
+          val tripArn = p.stripPrefix("/api/trips/").stripSuffix("/driver")
           BecomeDriverHandler.handle(event)
 
         // ---------- Fallback for unknown routes ----------

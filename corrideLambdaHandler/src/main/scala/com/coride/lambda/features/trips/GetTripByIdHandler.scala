@@ -32,13 +32,8 @@ object GetTripByIdHandler {
         val userStatus = tokenOpt.flatMap { tok =>
           jwt.verifyIdToken(tok).flatMap { claims =>
             val userId = claims.sub
-            val groupArnOpt = listUserGroupRecordsByTripArn(tripArn)
-              .find(_.users.exists(_.userId == userId))
-              .map(_.arn)
-            groupArnOpt.flatMap { gArn =>
-              val utArn = s"${tripArn}#${gArn}#${userId}"
-              dao.getUserTrip(utArn).map(_.tripStatus)
-            }
+            val utArn = dao.userTripArn(tripArn, userId)
+            dao.getUserTrip(utArn).map(_.tripStatus)
           }
         }
         userStatus match {

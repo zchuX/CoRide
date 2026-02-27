@@ -1,7 +1,7 @@
 package com.coride.lambda.features.trips
 
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
-import com.coride.lambda.util.{Responses, JsonUtils, VersioningUtils, TokenUtils, JwtUtils}
+import com.coride.lambda.util.{Responses, JsonUtils, TokenUtils, JwtUtils}
 import com.coride.tripdao.{TripDAO, GroupUser}
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.JsonNode
@@ -18,8 +18,7 @@ object JoinUserGroupHandler {
     val node = JsonUtils.parse(event.getBody)
     val tripArn = JsonUtils.require(node, "tripArn")
     val groupArn = JsonUtils.require(node, "groupArn")
-    val expectedTrip = VersioningUtils.tripExpectedVersion(event, dao, tripArn)
-    val expectedGroup = VersioningUtils.groupExpectedVersion(event, dao, groupArn)
+    // Do not use body/VersioningUtils for join: we use the group we just read so the version is correct.
 
     val tokenOpt = TokenUtils.bearer(event.getHeaders)
     val userIdOpt = tokenOpt.flatMap(tok => jwt.verifyIdToken(tok).map(_.sub))
@@ -40,7 +39,7 @@ object JoinUserGroupHandler {
 
             val gu = GroupUser(userId = userId, name = Option(node.get("name")).map(_.asText()).getOrElse(""), imageUrl = Option(node.get("imageUrl")).filter(n => n != null && !n.isNull).map(_.asText()), accept = true)
             try {
-              dao.joinGroup(groupArn, gu, expectedGroup)
+              dao.joinGroup(groupArn, gu, current.version)
             } catch {
               case _: Throwable => return Responses.json(409, """{"error":"Version conflict"}""")
             }

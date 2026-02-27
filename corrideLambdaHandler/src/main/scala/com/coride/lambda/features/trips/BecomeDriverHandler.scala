@@ -3,10 +3,12 @@ package com.coride.lambda.features.trips
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
 import com.coride.lambda.util.{Responses, JsonUtils, VersioningUtils, TokenUtils, JwtUtils}
 import com.coride.tripdao.TripDAO
+import com.coride.userdao.UserDAO
 import com.fasterxml.jackson.databind.ObjectMapper
 
 object BecomeDriverHandler {
   private val dao = TripDAO()
+  private val userDao = UserDAO()
   private val mapper = new ObjectMapper()
   private val userPoolId: String = Option(System.getenv("USER_POOL_ID")).getOrElse("")
   private val awsRegion: String = Option(System.getenv("AWS_REGION")).getOrElse("us-east-1")
@@ -28,7 +30,14 @@ object BecomeDriverHandler {
         current match {
           case None => Responses.json(404, """{"error":"Trip not found"}""")
           case Some(tm) =>
-            val updated = tm.copy(driver = Some(userId), driverConfirmed = Some(true))
+            // driverConfirmed is true when the user has accepted (BecomeDriver). It is only false when driver is None or an invitation was sent but not yet accepted.
+            val driverUser = userDao.getUser(userId)
+            val updated = tm.copy(
+              driver = Some(userId),
+              driverName = driverUser.map(_.name),
+              driverPhotoUrl = driverUser.flatMap(_.photoUrl),
+              driverConfirmed = Some(true)
+            )
             try {
               dao.updateTripMetadata(updated, expected)
               Responses.json(200, mapper.writeValueAsString(GetUserTripsHandler.toJson(updated)))

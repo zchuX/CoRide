@@ -44,6 +44,7 @@ object StartTripHandler {
 
         try {
           tripDao.updateTripMetadata(updatedTrip, expected)
+          tripDao.setUserTripStatusesForTrip(tripArn, "InProgress")
           val body = GetUserTripsHandler.toJson(updatedTrip)
           Responses.json(200, mapper.writeValueAsString(body))
         } catch {

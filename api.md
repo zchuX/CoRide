@@ -4,7 +4,7 @@
       "description": "Creates a new trip.",
       "request": {
         "method": "POST",
-        "path": "/trips",
+        "path": "/api/trips",
         "body": {
           "startTime": {"type": "Long", "description": "The start time of the trip as a Unix timestamp."},
           "start": {"type": "Option[String]", "description": "An optional start location for the trip."},
@@ -75,7 +75,7 @@
       "description": "Updates the metadata for a trip.",
       "request": {
         "method": "PUT",
-        "path": "/trips/{tripArn}",
+        "path": "/api/trips/{tripArn}",
         "body": {
           "startTime": {"type": "Option[Long]", "description": "The updated start time."},
           "notes": {"type": "Option[String]", "description": "The updated notes."},
@@ -93,7 +93,7 @@
       "description": "Starts a trip.",
       "request": {
         "method": "POST",
-        "path": "/trips/{tripArn}/start"
+        "path": "/api/trips/{tripArn}/start"
       },
       "response": {
         "200": {
@@ -106,7 +106,7 @@
       "description": "Marks a location as arrived for a trip.",
       "request": {
         "method": "POST",
-        "path": "/trips/{tripArn}/locations/{locationName}/arrival",
+        "path": "/api/trips/{tripArn}/locations/{locationName}/arrival",
         "body": {
           "arrived": {"type": "Boolean", "description": "Must be true."}
         }
@@ -122,7 +122,7 @@
       "description": "Allows a user to leave a trip. If the last registered user leaves, the trip is cancelled.",
       "request": {
         "method": "POST",
-        "path": "/trips/{tripArn}/leave"
+        "path": "/api/trips/{tripArn}/leave"
       },
       "response": {
         "200": {
@@ -203,7 +203,7 @@
       "description": "Allows a user to become the driver for a trip.",
       "request": {
         "method": "POST",
-        "path": "/trips/{tripArn}/driver"
+        "path": "/api/trips/{tripArn}/driver"
       },
       "response": {
         "200": {

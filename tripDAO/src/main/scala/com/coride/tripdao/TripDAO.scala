@@ -153,32 +153,32 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
       groups: List[UserGroupRecord] 
   ): List[Location] = { 
   
-    // Helper to merge groups into Location objects 
-    def mergeLocations(locations: Seq[(String, String, String, Long)]): Map[String, Location] = { 
-      // locationName -> Location 
-      locations.foldLeft(Map.empty[String, Location]) { case (acc, (locName, groupArn, kind, time)) => 
-        val existing = acc.getOrElse(locName, Location(locationName = locName)) 
-        val updated = kind match { 
-          case "pickup"  => existing.copy(pickupGroups = existing.pickupGroups :+ groupArn) 
-          case "dropoff" => existing.copy(dropOffGroups = existing.dropOffGroups :+ groupArn) 
-        } 
-        acc + (locName -> updated) 
-      } 
-    } 
-  
-    // --- 1️⃣ Prepare pickups (only include non-empty location names) --- 
-    val pickups: Seq[(String, String, String, Long)] = 
-      groups.flatMap(g => if (g.start.nonEmpty) Some((g.start, g.arn, "pickup", g.pickupTime)) else None) 
-    val pickupLocationsMap = mergeLocations(pickups) 
-    val pickupLocationsOrdered = pickups 
-      .sortBy(_._4)                    // ascending by pickupTime 
-      .map(_._1) 
-      .distinct 
-      .map(pickupLocationsMap)         // get Location object 
-  
-    // --- 2️⃣ Prepare dropoffs (only include non-empty location names) --- 
-    val dropoffs: Seq[(String, String, String, Long)] = 
-      groups.flatMap(g => if (g.destination.nonEmpty) Some((g.destination, g.arn, "dropoff", g.pickupTime)) else None) 
+    // Helper to merge groups into Location objects (store group names for human-readable payloads)
+    def mergeLocations(locations: Seq[(String, String, String, Long)]): Map[String, Location] = {
+      // locationName -> Location; second element is groupName (not groupArn)
+      locations.foldLeft(Map.empty[String, Location]) { case (acc, (locName, groupName, kind, time)) =>
+        val existing = acc.getOrElse(locName, Location(locationName = locName))
+        val updated = kind match {
+          case "pickup"  => existing.copy(pickupGroups = existing.pickupGroups :+ groupName)
+          case "dropoff" => existing.copy(dropOffGroups = existing.dropOffGroups :+ groupName)
+        }
+        acc + (locName -> updated)
+      }
+    }
+
+    // --- 1️⃣ Prepare pickups (only include non-empty location names); use groupName for human-readable storage ---
+    val pickups: Seq[(String, String, String, Long)] =
+      groups.flatMap(g => if (g.start.nonEmpty) Some((g.start, g.groupName, "pickup", g.pickupTime)) else None)
+    val pickupLocationsMap = mergeLocations(pickups)
+    val pickupLocationsOrdered = pickups
+      .sortBy(_._4)                    // ascending by pickupTime
+      .map(_._1)
+      .distinct
+      .map(pickupLocationsMap)         // get Location object
+
+    // --- 2️⃣ Prepare dropoffs (only include non-empty location names); use groupName for human-readable storage ---
+    val dropoffs: Seq[(String, String, String, Long)] =
+      groups.flatMap(g => if (g.destination.nonEmpty) Some((g.destination, g.groupName, "dropoff", g.pickupTime)) else None) 
     val dropoffLocationsMap = mergeLocations(dropoffs) 
     val dropoffLocationsOrdered = dropoffs 
       .sortBy(-_._4)                   // descending by pickupTime 
@@ -212,22 +212,22 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
     finalLocations 
   }
 
-  private def mergeSingleGroupIntoLocations(base: List[Location], start: String, destination: String, gid: String): List[Location] = {
+  private def mergeSingleGroupIntoLocations(base: List[Location], start: String, destination: String, groupName: String): List[Location] = {
     val byName = scala.collection.mutable.Map.from(base.map(l => l.locationName -> l))
     val sLoc = byName.getOrElse(start, Location(locationName = start))
-    byName.update(start, sLoc.copy(pickupGroups = (sLoc.pickupGroups :+ gid).distinct))
+    byName.update(start, sLoc.copy(pickupGroups = (sLoc.pickupGroups :+ groupName).distinct))
     val dLoc = byName.getOrElse(destination, Location(locationName = destination))
-    byName.update(destination, dLoc.copy(dropOffGroups = (dLoc.dropOffGroups :+ gid).distinct))
+    byName.update(destination, dLoc.copy(dropOffGroups = (dLoc.dropOffGroups :+ groupName).distinct))
     byName.values.toList.sortBy(_.locationName)
   }
 
-  private def removeSingleGroupFromLocations(base: List[Location], start: String, destination: String, gid: String): List[Location] = {
+  private def removeSingleGroupFromLocations(base: List[Location], start: String, destination: String, groupName: String): List[Location] = {
     val byName = scala.collection.mutable.Map.from(base.map(l => l.locationName -> l))
     byName.get(start).foreach { sLoc =>
-      byName.update(start, sLoc.copy(pickupGroups = sLoc.pickupGroups.filterNot(_ == gid)))
+      byName.update(start, sLoc.copy(pickupGroups = sLoc.pickupGroups.filterNot(_ == groupName)))
     }
     byName.get(destination).foreach { dLoc =>
-      byName.update(destination, dLoc.copy(dropOffGroups = dLoc.dropOffGroups.filterNot(_ == gid)))
+      byName.update(destination, dLoc.copy(dropOffGroups = dLoc.dropOffGroups.filterNot(_ == groupName)))
     }
     // Drop empty locations with no pickup/drop groups
     byName.values.filter(l => l.pickupGroups.nonEmpty || l.dropOffGroups.nonEmpty).toList.sortBy(_.locationName)
@@ -463,8 +463,8 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
     users: Option[List[GroupUser]],
     numAnonymousUsers: Option[Int]
   ): Unit = {
-    val tripOpt = getTripMetadata(groupArn.split("#").head)
     val groupOpt = getUserGroup(groupArn)
+    val tripOpt = groupOpt.flatMap(g => getTripMetadata(g.tripArn))
 
     (tripOpt, groupOpt) match {
       case (Some(trip), Some(group)) =>
@@ -685,11 +685,11 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
       .expressionAttributeNames(Map("#users" -> "users", "#numAnonymousUsers" -> "numAnonymousUsers", "#version" -> "version").asJava)
       .expressionAttributeValues(Map(
         ":newUser" -> Attrs.list(List(groupUserToAttr(newUser))),
-        ":inc" -> nInt(1),
         ":dec" -> nInt(-1),
+        ":inc" -> nInt(1),
         ":expected" -> nInt(expectedVersion)
       ).asJava)
-      .updateExpression("SET #users = list_append(#users, :newUser), #numAnonymousUsers = #numAnonymousUsers + :inc, #version = #version + :inc")
+      .updateExpression("SET #users = list_append(#users, :newUser), #numAnonymousUsers = #numAnonymousUsers + :dec, #version = #version + :inc")
       .conditionExpression("#version = :expected")
       .build()
     client.updateItem(req)
@@ -1095,12 +1095,20 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
     // 1. Update trip status to InProgress and set current stop
     updateTripStatus(tripArn, "InProgress", expectedTripVersion, currentStop = Some(currentStop))
 
-    // 2. Update user trips to InProgress
+    // 2. Update user trips to InProgress (only those currently Upcoming)
     val userTrips = listUsersByTrip(tripArn)
     userTrips.foreach { ut =>
       if (ut.tripStatus == "Upcoming") {
         updateUserTripStatus(ut.arn, "InProgress", ut.version)
       }
+    }
+  }
+
+  /** Updates all UserTrip entries for this trip to the given status (e.g. when trip starts -> InProgress). */
+  def setUserTripStatusesForTrip(tripArn: String, newStatus: String): Unit = {
+    val userTrips = listUsersByTrip(tripArn)
+    userTrips.foreach { ut =>
+      updateUserTripStatus(ut.arn, newStatus, ut.version)
     }
   }
 }
