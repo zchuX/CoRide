@@ -1,5 +1,8 @@
 package com.coride.lambda.router
 
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+
 import com.amazonaws.services.lambda.runtime.{Context, RequestHandler}
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
 import com.coride.lambda.features.auth._
@@ -16,6 +19,10 @@ class ValidationException(message: String) extends RuntimeException(message)
 class UnauthorizedException(message: String) extends RuntimeException(message)
 
 class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGroupsDAO: UserGroupsDAO, jwt: JwtUtils) extends RequestHandler[APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent] {
+
+  /** Decode path segment so that group:uuid in URL as group%3Auuid is looked up as group:uuid. */
+  private def decodePathSegment(s: String): String =
+    try { URLDecoder.decode(s, StandardCharsets.UTF_8.name()) } catch { case _: Exception => s }
 
   def this() = this(
     DynamoDbClient.builder().region(Region.of(Option(System.getenv("AWS_REGION")).getOrElse("us-east-1"))).httpClient(UrlConnectionHttpClient.builder().build()).build(),
@@ -103,22 +110,22 @@ class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGro
           FlipLocationArrivalHandler.handle(event)
 
         case ("GET", p) if p.startsWith("/user-groups/") || p.startsWith("/api/user-groups/") =>
-          val groupArn = p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/")
+          val groupArn = decodePathSegment(p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/"))
           GetUserGroupHandler.handle(event, groupArn)
 
         case ("PUT", p) if p.startsWith("/user-groups/") || p.startsWith("/api/user-groups/") =>
-          val groupArn = p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/")
+          val groupArn = decodePathSegment(p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/"))
           UpdateUserGroupHandler.handle(event)
 
         case ("POST", "/user-groups") | ("POST", "/api/user-groups") =>
           CreateUserGroupHandler.handle(event)
 
         case ("POST", p) if p.matches("/user-groups/.+/accept") || p.matches("/api/user-groups/.+/accept") =>
-          val groupArn = p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/").stripSuffix("/accept")
+          val groupArn = decodePathSegment(p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/").stripSuffix("/accept"))
           AcceptInvitationHandler.handle(event, groupArn)
 
         case ("POST", p) if p.matches("/user-groups/.+/join") || p.matches("/api/user-groups/.+/join") =>
-          val groupArn = p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/").stripSuffix("/join")
+          val groupArn = decodePathSegment(p.stripPrefix("/api/user-groups/").stripPrefix("/user-groups/").stripSuffix("/join"))
           JoinUserGroupHandler.handle(event)
 
         case ("POST", p) if p.matches("/api/trips/.+/start") =>
