@@ -924,7 +924,8 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
       .scanIndexForward(ascending)
       .build()
     val res = client.query(req)
-    Option(res.items()).map(_.asScala.toList).getOrElse(Nil).flatMap(it => parseUserTrip(it.asScala))
+    val items = Option(res.items()).map(_.asScala.toList).getOrElse(Nil)
+    items.flatMap(it => parseUserTrip(it.asScala))
   }
 
 

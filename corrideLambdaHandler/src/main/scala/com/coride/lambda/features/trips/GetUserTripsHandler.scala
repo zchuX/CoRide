@@ -39,22 +39,29 @@ object GetUserTripsHandler {
       .foldLeft(List.empty[UserTrip]) { (acc, ut) => if (acc.exists(_.arn == ut.arn)) acc else acc :+ ut }
       .sortBy(ut => (-ut.tripDateTime, ut.arn))
 
-    // Collect full trip metadata for each user trip
+    // Build list from UserTrip query only (no per-trip metadata fetch)
     val root: ObjectNode = mapper.createObjectNode()
     val items: ArrayNode = mapper.createArrayNode()
-
     trips.foreach { ut =>
-      val tripArn = ut.arn.split("#").headOption.getOrElse("")
-      dao.getTripMetadata(tripArn).foreach { tm =>
-        val node = toJson(tm)
-        node.put("userTripArn", ut.arn)
-        node.put("userTripStatus", ut.tripStatus)
-        node.put("userStatusKey", ut.userStatusKey)
-        items.add(node)
-      }
+      val node = userTripToListJson(ut)
+      items.add(node)
     }
     root.set("trips", items)
     Responses.json(200, mapper.writeValueAsString(root))
+  }
+
+  private def userTripToListJson(ut: UserTrip): ObjectNode = {
+    val node = mapper.createObjectNode()
+    node.put("tripArn", ut.tripArn)
+    node.put("startTime", ut.tripDateTime)
+    node.put("status", ut.tripStatus)
+    node.put("start", ut.start)
+    node.put("destination", ut.destination)
+    node.put("isDriver", ut.isDriver)
+    node.put("driverConfirmed", ut.driverConfirmed)
+    node.put("userTripArn", ut.arn)
+    node.put("userTripStatus", ut.tripStatus)
+    node
   }
 
   def toJson(t: TripMetadata): ObjectNode = {

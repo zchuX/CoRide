@@ -26,14 +26,14 @@
       "description": "Gets a trip by its ARN.",
       "request": {
         "method": "GET",
-        "path": "/trips/{tripArn}"
+        "path": "/api/trips/{tripArn}"
       },
       "response": {
         "200": {
           "description": "The trip metadata and user status.",
           "body": {
-            "trip": {"type": "TripMetadata", "description": "The trip metadata."},
-            "status": {"type": "Object", "description": "The user's status for the trip."}
+            "trip": {"type": "TripMetadata", "description": "Full trip metadata (tripArn, startTime, status, driver, locations, usergroups, etc.)."},
+            "status": {"type": "Object", "description": "Current user status: userTripStatus (string | null)."}
           }
         }
       }
@@ -42,7 +42,7 @@
       "description": "Gets all trips for the current user.",
       "request": {
         "method": "GET",
-        "path": "/trips",
+        "path": "/api/trips",
         "queryParams": {
           "completed": {"type": "Boolean", "required": true, "description": "true = completed trips, false = uncompleted trips."}
         }
@@ -51,7 +51,7 @@
         "200": {
           "description": "A list of trips for the user.",
           "body": {
-            "trips": {"type": "List[TripMetadata]", "description": "A list of trip metadata objects, each with additional user-specific fields."}
+            "trips": {"type": "List[UserTripListItem]", "description": "List of trip list items: tripArn, startTime, status, start, destination, isDriver, driverConfirmed, userTripArn, userTripStatus."}
           }
         }
       }
@@ -60,13 +60,13 @@
       "description": "Gets all registered users for a trip.",
       "request": {
         "method": "GET",
-        "path": "/trips/{tripArn}/users"
+        "path": "/api/trips/{tripArn}/users"
       },
       "response": {
         "200": {
           "description": "A list of users for the trip.",
           "body": {
-            "users": {"type": "List[UserTrip]", "description": "A list of user trip objects."}
+            "users": {"type": "List[UserTrip]", "description": "List of UserTrip: arn, tripArn, userStatusKey, tripDateTime, tripStatus, start, destination, departureDateTime, isDriver, driverConfirmed, version."}
           }
         }
       }
