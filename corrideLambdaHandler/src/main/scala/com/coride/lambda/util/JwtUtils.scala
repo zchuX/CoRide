@@ -22,7 +22,7 @@ object JwtUtils {
 
   private def readJson(bytes: Array[Byte]) = mapper.readTree(bytes)
 
-  case class VerifiedClaims(sub: String, username: Option[String], email: Option[String] = None)
+  case class VerifiedClaims(sub: String, username: Option[String], email: Option[String] = None, name: Option[String] = None)
 }
 
 /**
@@ -74,7 +74,7 @@ class JwtUtils(userPoolId: String, region: String, clientId: String) {
     if (Option(System.getenv("DEBUG_BYPASS_JWT")).exists(_.equalsIgnoreCase("true"))) {
       if (token != null && token.startsWith("debug:")) {
         val sub = token.stripPrefix("debug:")
-        return Some(VerifiedClaims(sub = sub, username = None, email = None))
+        return Some(VerifiedClaims(sub = sub, username = None, email = None, name = None))
       }
     }
 
@@ -113,6 +113,7 @@ class JwtUtils(userPoolId: String, region: String, clientId: String) {
     val sub = Option(payloadJson.get("sub")).map(_.asText())
     val username = Option(payloadJson.get("cognito:username")).map(_.asText())
     val email = Option(payloadJson.get("email")).map(_.asText()).filter(_.nonEmpty)
-    sub.map(s => VerifiedClaims(s, username, email))
+    val name = Option(payloadJson.get("name")).map(_.asText()).filter(_.nonEmpty)
+    sub.map(s => VerifiedClaims(s, username, email, name))
   }
 }

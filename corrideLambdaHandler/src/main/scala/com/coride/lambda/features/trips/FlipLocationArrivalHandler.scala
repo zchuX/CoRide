@@ -63,9 +63,10 @@ object FlipLocationArrivalHandler {
 
                 if (finalLocations.forall(_.arrived)) {
                   updatedTrip = updatedTrip.copy(status = "Completed", completionTime = Some(System.currentTimeMillis()))
+                  dao.completeTripTransaction(updatedTrip, expected)
+                } else {
+                  dao.updateTripMetadata(updatedTrip, expected)
                 }
-
-                dao.updateTripMetadata(updatedTrip, expected)
                 val body = GetUserTripsHandler.toJson(updatedTrip)
                 Responses.json(200, mapper.writeValueAsString(body))
               } else {

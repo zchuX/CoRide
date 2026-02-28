@@ -1,5 +1,7 @@
 package com.coride.lambda.features.trips
 
+import java.util.UUID
+
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
 import com.coride.lambda.util.{Responses, JsonUtils, TokenUtils, JwtUtils}
 import com.coride.tripdao.{TripDAO, TripMetadata, Location, Car, TripUser, UserGroup, GroupUser, UserGroupRecord, UserTrip}
@@ -24,6 +26,8 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
     val chars = ('A' to 'Z') ++ ('0' to '9')
     (1 to 6).map(_ => chars(scala.util.Random.nextInt(chars.length))).mkString
   }
+
+  private def generateGroupArn(): String = s"group:${UUID.randomUUID().toString.replace("-", "").toLowerCase}"
 
   def handle(event: APIGatewayProxyRequestEvent): APIGatewayProxyResponseEvent = {
     // Require authenticated user
@@ -60,20 +64,19 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
       )
     }
 
-    val keyOpt = verified.username.filter(_.nonEmpty).orElse(Some(verified.sub))
-    val currentUserArn = keyOpt.flatMap(userDao.getUser).map(_.userArn)
-      .orElse(verified.email.flatMap(userDao.getUserByEmail).map(_.userArn))
-      .getOrElse(verified.sub)
+    // Caller identity from JWT only; driver must be the caller when present.
+    val currentUserArn = verified.sub
     var driverIdOpt = Option(node.get("driver")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty)
-    // Authorization: only the caller can be the driver; never accept a client-supplied userId for another user (e.g. friend)
     driverIdOpt.foreach { driverId =>
-      if (driverId != verified.sub && driverId != currentUserArn) {
+      if (driverId != verified.sub) {
         return Responses.json(403, """{"error":"Forbidden","message":"Driver must be the authenticated user"}""")
       }
     }
     // When client sends driver-only trip (groups empty) but omits driver, treat current user as driver
     if (driverIdOpt.isEmpty && (!node.has("groups") || node.get("groups").isEmpty)) driverIdOpt = Some(verified.sub)
-    val driverOpt = driverIdOpt.flatMap(userDao.getUser)
+    // Driver name from JWT when driver is caller; no UserDAO lookup needed for trip creation
+    val driverNameOpt = driverIdOpt.map(_ => verified.name).flatten
+    val driverPhotoUrlOpt: Option[String] = None
 
     // Trip-level start/destination: evaluate and dedupe (order: start then destination)
     val topLevelLocations = (startOpt.toList ++ destOpt.toList).distinct.map { name =>
@@ -88,8 +91,8 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
         status = "Upcoming",
         currentStop = None,
         driver = driverIdOpt,
-        driverName = driverOpt.map(_.name),
-        driverPhotoUrl = driverOpt.flatMap(_.photoUrl),
+        driverName = driverNameOpt,
+        driverPhotoUrl = driverPhotoUrlOpt,
         driverConfirmed = Some(driverIdOpt.isDefined),
         car = carOpt,
         users = None,
@@ -112,7 +115,7 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
           val buff = scala.collection.mutable.ListBuffer[UserGroupRecord]()
           while (it.hasNext) {
             val gn = it.next()
-            val arn = gn.get("arn").asText()
+            val arn = generateGroupArn()
             val groupName = gn.get("groupName").asText()
             val start = Option(gn.get("start")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty).getOrElse("")
             val destination = Option(gn.get("destination")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty).getOrElse("")
@@ -196,10 +199,11 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
     responseBody.put("startTime", base.startTime)
     responseBody.put("status", base.status)
     driverIdOpt.foreach(responseBody.put("driver", _))
-    driverOpt.foreach(d => responseBody.put("driverName", d.name))
+    driverNameOpt.foreach(responseBody.put("driverName", _))
     responseBody.put("driverConfirmed", driverIdOpt.isDefined)
-    
-    val finalLocations = tripDao.getTripMetadata(tripArn).map(_.locations).getOrElse(Nil)
+
+    val metaOpt = tripDao.getTripMetadata(tripArn)
+    val finalLocations = metaOpt.map(_.locations).getOrElse(Nil)
     val locationsNode = mapper.createArrayNode()
     finalLocations.foreach { loc =>
         val locNode = mapper.createObjectNode()
@@ -226,7 +230,7 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
     }
 
     val userGroupsNode = mapper.createArrayNode()
-    tripDao.getTripMetadata(tripArn).flatMap(_.usergroups).getOrElse(Nil).foreach { ug =>
+    metaOpt.flatMap(_.usergroups).getOrElse(Nil).foreach { ug =>
         val ugNode = mapper.createObjectNode()
         ugNode.put("groupId", ug.groupId)
         ugNode.put("groupName", ug.groupName)

@@ -1,6 +1,6 @@
-# Lambda API Architecture
+# lambda api architecture
 
-Per-API handler logic: validate, construct from input/DB, write/update, return.
+per-API handler logic: validate, construct from input/DB, write/update, return.
 
 ---
 
@@ -9,7 +9,7 @@ Per-API handler logic: validate, construct from input/DB, write/update, return.
 **handler logic:**
 - Validate body: password (min 6 chars), exactly one of email or phone_number (format valid), name non-empty; forbid userId/username. Validate rate limits (per-IP, per-email/phone OTP).
 - No DB read for user; construct username from email/phone.
-- Cognito signUp. If user already UNCONFIRMED, resend code. Write rate table: PutItem `otp:issued:user:{username}` with TTL (30 min).
+- Cognito signUp. If user already unconfirmed, resend code. Write rate table: PutItem `otp:issued:user:{username}` with TTL (30 min).
 - Return 200 and message (verification code sent / resent) or 409 if user already confirmed.
 
 ---
@@ -18,7 +18,7 @@ Per-API handler logic: validate, construct from input/DB, write/update, return.
 
 **handler logic:**
 - Validate body: code required, exactly one of email or phone_number; forbid userId/username. Rate limit verify. Read rate table GetItem(issued key) to ensure OTP within issuance window.
-- If Cognito user already CONFIRMED: build User from Cognito attributes, userDAO.createUser(user) (transaction: Users + contact index). Return 200 "account already verified".
+- If Cognito user already confirmed: build User from Cognito attributes, userDAO.createUser(user) (transaction: Users + contact index). Return 200 "account already verified".
 - Else: Cognito confirmSignUp. Write rate table: PutItem(used key), DeleteItem(issued key). Build User from Cognito, userDAO.createUser(user) (transaction).
 - Return 200 "account verified".
 
@@ -83,9 +83,9 @@ Per-API handler logic: validate, construct from input/DB, write/update, return.
 **api:** POST /api/trips
 
 **handler logic:**
-- Validate Bearer; JWT verify. Validate body: startTime required; optional start, destination, car, notes, groups. If driver present, validate driver equals verified.sub or currentUserArn. userDao.getUser for current user and driver. TripValidation: no duplicate users across driver and groups.
-- Generate tripArn. Build TripMetadata and groups from input and driver lookup. If driver set: build driverTrip, tripDao.createTripWithDriver(base, groups, driverTrip). Else: tripDao.createTrip(base, groups). Then tripDao.getTripMetadata(tripArn) twice for response payload.
-- Transaction: createTrip or createTripWithDriver (PutItem TripMetadata, UserGroupRecords, UserTrips). Then two reads.
+- Validate Bearer; JWT verify. Validate body: startTime required; optional start, destination, car, notes, groups. If driver present, validate driver equals verified.sub (caller only). Caller from JWT only (verified.sub); driver name from JWT (verified.name) when driver set; no UserDAO for trip creation. TripValidation: no duplicate users across driver and groups.
+- Generate tripArn. Group arn auto-generated per group (do not send). Build TripMetadata and groups from input. If driver set: build driverTrip, tripDao.createTripWithDriver(base, groups, driverTrip). Else: tripDao.createTrip(base, groups). tripDao.getTripMetadata(tripArn) once for response payload.
+- Transaction: createTrip or createTripWithDriver (PutItem TripMetadata, UserGroupRecords, UserTrips). Then one read.
 - Return 200 with trip (tripArn, locations, usergroups, etc.).
 
 ---
@@ -104,8 +104,8 @@ Per-API handler logic: validate, construct from input/DB, write/update, return.
 
 **handler logic:**
 - Validate Bearer; JWT verify. tripDao.getTripMetadata(tripArn). Validate caller is driver; validate trip status is Upcoming.
-- Build updated trip (status InProgress, optionally first location arrived and currentStop). tripDao.updateTripMetadata(updated, expected). tripDao.setUserTripStatusesForTrip(tripArn, "InProgress") (listUsersByTrip then updateUserTripStatus per UserTrip).
-- One UpdateItem on trip; N UpdateItems on UserTrips. Return 200 with updated trip or 409.
+- Build updated trip (status InProgress, optionally first location arrived and currentStop). tripDao.startTripTransaction(updated, expected).
+- Transactional write: one UpdateItem on trip metadata; N UpdateItems on UserTrips (listUsersByTrip then update tripStatus to InProgress per UserTrip). All-or-nothing; version checks on trip and each UserTrip. Return 200 with updated trip or 409.
 
 ---
 
@@ -113,8 +113,8 @@ Per-API handler logic: validate, construct from input/DB, write/update, return.
 
 **handler logic:**
 - Validate Bearer; JWT verify. Body: tripArn, locationName, arrived (true). tripDao.getTripMetadata(tripArn). Validate now >= startTime; validate caller is driver or in a group with start/destination equal to locationName (groupsDAO.listUserGroupRecordsByTripArn).
-- Build updated locations (mark location arrived, reorder arrived first by time), set currentStop; if all arrived set status Completed and completionTime. tripDao.updateTripMetadata(updated, expected).
-- Single UpdateItem. Return 200 with updated trip or 409.
+- Build updated locations (mark location arrived, reorder arrived first by time), set currentStop. If all arrived: set status Completed and completionTime; tripDao.completeTripTransaction(updated, expected). Else: tripDao.updateTripMetadata(updated, expected).
+- If all arrived: transactional write (one UpdateItem on trip; N UpdateItems on UserTrips: tripStatus = Completed, userStatusKey = {userId}-completed so GSI moves from -uncompleted to -completed). Otherwise single UpdateItem on trip. Return 200 with updated trip or 409.
 
 ---
 
