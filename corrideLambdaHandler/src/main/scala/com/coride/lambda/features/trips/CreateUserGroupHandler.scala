@@ -25,7 +25,7 @@ object CreateUserGroupHandler {
 
     val node = JsonUtils.parse(event.getBody)
     val tripArn = JsonUtils.require(node, "tripArn")
-    val groupArn = JsonUtils.get(node, "groupArn").filter(_.nonEmpty).getOrElse(generateGroupArn())
+    val groupArn = generateGroupArn()
     val groupName = JsonUtils.require(node, "groupName")
     val start = JsonUtils.require(node, "start")
     val destination = JsonUtils.require(node, "destination")
