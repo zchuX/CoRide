@@ -129,7 +129,7 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
               val ub = scala.collection.mutable.ListBuffer[GroupUser]()
               while (uit.hasNext) {
                 val un = uit.next()
-                val uid = nodeText(un, "userId")
+                val uid = nodeText(un, "userArn").trim
                 val name = nodeText(un, "name")
                 val image = Option(un.get("imageUrl")).filter(v => v != null && !v.isNull).map(_.asText()).filter(_.nonEmpty)
                 val accept = Option(un.get("accept")).filter(v => v != null && !v.isNull).map(_.asBoolean()).getOrElse(false)
@@ -147,6 +147,17 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
           val cls = e.getClass.getName
           return Responses.json(400, s"""{"error":"Bad Request","message":"CreateTripHandler.groups: $cls: $msg"}""")
       }
+
+    // Require each group user to have userArn; then validate each exists.
+    val emptyArnInGroup = groups.exists(_.users.exists(_.userId.isEmpty))
+    if (emptyArnInGroup) {
+      return Responses.json(400, """{"error":"Bad Request","message":"Each group user must have userArn"}""")
+    }
+    val allGroupUserArns = groups.flatMap(_.users.map(_.userId)).distinct
+    val missing = allGroupUserArns.filter(arn => userDao.getUser(arn).isEmpty)
+    if (missing.nonEmpty) {
+      return Responses.json(400, s"""{"error":"Bad Request","message":"User not found","invalidUserArns":${mapper.writeValueAsString(missing)}}""")
+    }
 
     // Ensure the acting user is marked as confirmed in any provided group.
     val actingUserId = currentUserArn
