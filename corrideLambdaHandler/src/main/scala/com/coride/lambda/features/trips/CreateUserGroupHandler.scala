@@ -1,5 +1,7 @@
 package com.coride.lambda.features.trips
 
+import java.util.UUID
+
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
 import com.coride.lambda.util.{Responses, JsonUtils, VersioningUtils, TokenUtils, JwtUtils}
 import com.coride.tripdao.{TripDAO, UserGroupRecord, GroupUser}
@@ -13,6 +15,8 @@ object CreateUserGroupHandler {
   private val userPoolClientId: String = Option(System.getenv("USER_POOL_CLIENT_ID")).getOrElse("")
   private val jwt = new JwtUtils(userPoolId, awsRegion, userPoolClientId)
 
+  private def generateGroupArn(): String = s"group:${UUID.randomUUID().toString.replace("-", "").toLowerCase}"
+
   def handle(event: APIGatewayProxyRequestEvent): APIGatewayProxyResponseEvent = {
     // Require authenticated user
     val tokenOpt = TokenUtils.bearer(event.getHeaders)
@@ -21,7 +25,7 @@ object CreateUserGroupHandler {
 
     val node = JsonUtils.parse(event.getBody)
     val tripArn = JsonUtils.require(node, "tripArn")
-    val groupArn = JsonUtils.require(node, "groupArn")
+    val groupArn = JsonUtils.get(node, "groupArn").filter(_.nonEmpty).getOrElse(generateGroupArn())
     val groupName = JsonUtils.require(node, "groupName")
     val start = JsonUtils.require(node, "start")
     val destination = JsonUtils.require(node, "destination")
