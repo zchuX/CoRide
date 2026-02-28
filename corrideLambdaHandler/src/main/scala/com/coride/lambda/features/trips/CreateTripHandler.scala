@@ -116,21 +116,23 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
           while (it.hasNext) {
             val gn = it.next()
             val arn = generateGroupArn()
-            val groupName = gn.get("groupName").asText()
-            val start = Option(gn.get("start")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty).getOrElse("")
-            val destination = Option(gn.get("destination")).filter(n => n != null && !n.isNull).map(_.asText()).filter(_.nonEmpty).getOrElse("")
-            val pickupTime = gn.get("pickupTime").asLong()
-            val numAnonymousUsers = Option(gn.get("numAnonymousUsers")).map(_.asInt).getOrElse(0)
+            def nodeText(n: com.fasterxml.jackson.databind.JsonNode, field: String): String =
+              Option(n.get(field)).filter(v => v != null && !v.isNull).map(_.asText()).getOrElse("")
+            val groupName = nodeText(gn, "groupName")
+            val start = nodeText(gn, "start")
+            val destination = nodeText(gn, "destination")
+            val pickupTime = Option(gn.get("pickupTime")).filter(v => v != null && !v.isNull).map(_.asLong()).getOrElse(0L)
+            val numAnonymousUsers = Option(gn.get("numAnonymousUsers")).filter(v => v != null && !v.isNull).map(_.asInt).getOrElse(0)
             val usersNode = gn.get("users")
             val users = if (usersNode != null && usersNode.isArray) {
               val uit = usersNode.elements()
               val ub = scala.collection.mutable.ListBuffer[GroupUser]()
               while (uit.hasNext) {
                 val un = uit.next()
-                val uid = un.get("userId").asText()
-                val name = un.get("name").asText()
-                val image = Option(un.get("imageUrl")).filter(n => n != null && !n.isNull).map(_.asText())
-                val accept = Option(un.get("accept")).map(_.asBoolean()).getOrElse(false)
+                val uid = nodeText(un, "userId")
+                val name = nodeText(un, "name")
+                val image = Option(un.get("imageUrl")).filter(v => v != null && !v.isNull).map(_.asText()).filter(_.nonEmpty)
+                val accept = Option(un.get("accept")).filter(v => v != null && !v.isNull).map(_.asBoolean()).getOrElse(false)
                 ub += GroupUser(uid, name, image, accept)
               }
               ub.toList
