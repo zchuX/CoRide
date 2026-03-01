@@ -30,6 +30,7 @@ class TripMetadataOps(client: DynamoDbClient, tripMetadataTable: String) {
       val locations: List[Location] = getList("locations").flatMap { av => Option(av.m()) }.map(_.asScala.toMap).map { m =>
         Location(
           locationName = m.get("locationName").flatMap(a => Option(a.s())).getOrElse(""),
+          plannedTime = m.get("plannedTime").flatMap(a => Option(a.n())).map(_.toLong).getOrElse(0L),
           pickupGroups = m.get("pickupGroups").flatMap(a => Option(a.l())).map(_.asScala.toList.flatMap(v => Option(v.s()))).getOrElse(Nil),
           dropOffGroups = m.get("dropOffGroups").flatMap(a => Option(a.l())).map(_.asScala.toList.flatMap(v => Option(v.s()))).getOrElse(Nil),
           arrived = m.get("arrived").flatMap(a => Option(a.bool())).map(_.booleanValue()).getOrElse(false),

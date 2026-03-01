@@ -9,6 +9,7 @@ object ModelCodec {
 
   def locationToAttr(loc: Location): AttributeValue = map(Map(
     "locationName" -> s(loc.locationName),
+    "plannedTime" -> n(loc.plannedTime),
     "pickupGroups" -> list(loc.pickupGroups.map(s)),
     "dropOffGroups" -> list(loc.dropOffGroups.map(s)),
     "arrived" -> bool(loc.arrived),

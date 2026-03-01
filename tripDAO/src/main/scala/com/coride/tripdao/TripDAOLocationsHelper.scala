@@ -1,6 +1,10 @@
 package com.coride.tripdao
 
-/** Pure helpers for computing usergroups summaries, ordered locations, and UserTrip from record. */
+/** Pure helpers for computing usergroups summaries, ordered locations, and UserTrip from record.
+  * orderedLocationsFromRecords is used only when building new TripMetadata.locations during
+  * transactional writes (trip creation, user group add/update/remove). plannedTime is set there
+  * and written to TripMetadata; it is never synced or derived on read.
+  */
 object TripDAOLocationsHelper {
 
   def userTripArn(tripArn: String, userId: String): String = s"$tripArn:$userId"
@@ -14,13 +18,18 @@ object TripDAOLocationsHelper {
     }
   }
 
+  /** For transactional write path only: build locations (with plannedTime) to write to TripMetadata. */
   def orderedLocationsFromRecords(trip: TripMetadata, groups: List[UserGroupRecord]): List[Location] = {
     def mergeLocations(locations: Seq[(String, String, String, Long)]): Map[String, Location] = {
       locations.foldLeft(Map.empty[String, Location]) { case (acc, (locName, groupName, kind, time)) =>
-        val existing = acc.getOrElse(locName, Location(locationName = locName))
+        val existing = acc.getOrElse(locName, Location(locationName = locName, plannedTime = time))
+        val planned = if (existing.plannedTime == 0L) time else kind match {
+          case "pickup"  => existing.plannedTime.min(time)
+          case "dropoff" => existing.plannedTime.max(time)
+        }
         val updated = kind match {
-          case "pickup"  => existing.copy(pickupGroups = existing.pickupGroups :+ groupName)
-          case "dropoff" => existing.copy(dropOffGroups = existing.dropOffGroups :+ groupName)
+          case "pickup"  => existing.copy(pickupGroups = existing.pickupGroups :+ groupName, plannedTime = planned)
+          case "dropoff" => existing.copy(dropOffGroups = existing.dropOffGroups :+ groupName, plannedTime = planned)
         }
         acc + (locName -> updated)
       }
@@ -42,9 +51,10 @@ object TripDAOLocationsHelper {
 
     val finalLocations = (startLocationOpt.toList ++ middleLocations ++ endLocationOpt.toList)
       .groupBy(_.locationName)
-      .map { case (locName, locs) =>
+      .map { case (_, locs) =>
         locs.reduce { (a, b) =>
           a.copy(
+            plannedTime = if (a.plannedTime == 0L) b.plannedTime else if (b.plannedTime == 0L) a.plannedTime else a.plannedTime.min(b.plannedTime),
             pickupGroups = (a.pickupGroups ++ b.pickupGroups).distinct,
             dropOffGroups = (a.dropOffGroups ++ b.dropOffGroups).distinct
           )
@@ -59,12 +69,12 @@ object TripDAOLocationsHelper {
     finalLocations
   }
 
-  def mergeSingleGroupIntoLocations(base: List[Location], start: String, destination: String, groupName: String): List[Location] = {
+  def mergeSingleGroupIntoLocations(base: List[Location], start: String, destination: String, groupName: String, pickupTime: Long): List[Location] = {
     val byName = scala.collection.mutable.Map.from(base.map(l => l.locationName -> l))
-    val sLoc = byName.getOrElse(start, Location(locationName = start))
-    byName.update(start, sLoc.copy(pickupGroups = (sLoc.pickupGroups :+ groupName).distinct))
-    val dLoc = byName.getOrElse(destination, Location(locationName = destination))
-    byName.update(destination, dLoc.copy(dropOffGroups = (dLoc.dropOffGroups :+ groupName).distinct))
+    val sLoc = byName.getOrElse(start, Location(locationName = start, plannedTime = pickupTime))
+    byName.update(start, sLoc.copy(pickupGroups = (sLoc.pickupGroups :+ groupName).distinct, plannedTime = if (sLoc.plannedTime == 0L) pickupTime else sLoc.plannedTime.min(pickupTime)))
+    val dLoc = byName.getOrElse(destination, Location(locationName = destination, plannedTime = pickupTime))
+    byName.update(destination, dLoc.copy(dropOffGroups = (dLoc.dropOffGroups :+ groupName).distinct, plannedTime = if (dLoc.plannedTime == 0L) pickupTime else dLoc.plannedTime.max(pickupTime)))
     byName.values.toList.sortBy(_.locationName)
   }
 

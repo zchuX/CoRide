@@ -2,6 +2,7 @@ package com.coride.tripdao
 
 final case class Location(
   locationName: String,
+  plannedTime: Long = 0L,
   pickupGroups: List[String] = Nil,
   dropOffGroups: List[String] = Nil,
   arrived: Boolean = false,

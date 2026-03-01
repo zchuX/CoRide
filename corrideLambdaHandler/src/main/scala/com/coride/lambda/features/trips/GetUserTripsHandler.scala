@@ -80,6 +80,7 @@ object GetUserTripsHandler {
     t.locations.foreach { loc =>
       val ln = mapper.createObjectNode()
       ln.put("locationName", loc.locationName)
+      ln.put("plannedTime", loc.plannedTime)
       val pickupsArr = mapper.createArrayNode()
       loc.pickupGroups.sorted.foreach(name => pickupsArr.add(name))
       ln.set("pickupGroups", pickupsArr)

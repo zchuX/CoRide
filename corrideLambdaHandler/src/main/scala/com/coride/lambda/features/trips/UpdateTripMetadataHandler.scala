@@ -64,8 +64,7 @@ class UpdateTripMetadataHandler(tripDao: TripDAO, userDao: UserDAO, groupsDAO: U
         }
 
         val updated = tm.copy(
-          startTime = Option(node.get("startTime")).map(_.asLong()).getOrElse(tm.startTime),
-          notes = Option(node.get("notes")).filter(n => n != null && !n.isNull).map(_.asText()).orElse(tm.notes),
+          startTime = Option(node.get("startTime")).filter(n => n != null && !n.isNull).map(_.asLong()).getOrElse(tm.startTime),
           locations = updatedLocations
         )
 
@@ -85,7 +84,6 @@ class UpdateTripMetadataHandler(tripDao: TripDAO, userDao: UserDAO, groupsDAO: U
     node.put("startTime", tm.startTime)
     node.put("status", tm.status)
     tm.driver.foreach(node.put("driver", _))
-    tm.notes.foreach(node.put("notes", _))
     val locationsNode = mapper.createArrayNode()
     tm.locations.foreach(l => locationsNode.add(l.locationName))
     node.set("locations", locationsNode)

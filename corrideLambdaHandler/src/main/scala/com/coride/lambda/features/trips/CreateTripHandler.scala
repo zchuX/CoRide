@@ -80,7 +80,7 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
 
     // Trip-level start/destination: evaluate and dedupe (order: start then destination)
     val topLevelLocations = (startOpt.toList ++ destOpt.toList).distinct.map { name =>
-      Location(locationName = name, pickupGroups = Nil, dropOffGroups = Nil, arrived = false, arrivedTime = None)
+      Location(locationName = name, plannedTime = startTime, pickupGroups = Nil, dropOffGroups = Nil, arrived = false, arrivedTime = None)
     }
 
     val base = try {
@@ -221,6 +221,7 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
     finalLocations.foreach { loc =>
         val locNode = mapper.createObjectNode()
         locNode.put("locationName", loc.locationName)
+        locNode.put("plannedTime", loc.plannedTime)
         val pickupGroupsNode = mapper.createArrayNode()
         loc.pickupGroups.foreach(s => { pickupGroupsNode.add(s); () })
         locNode.set("pickupGroups", pickupGroupsNode)

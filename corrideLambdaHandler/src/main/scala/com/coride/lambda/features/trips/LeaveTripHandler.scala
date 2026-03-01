@@ -27,31 +27,39 @@ object LeaveTripHandler {
     tmOpt match {
       case None => Responses.json(404, """{"error":"Trip not found"}""")
       case Some(tm) =>
-        // Find the group in this trip that includes the user
         val groups = groupsDAO.listUserGroupRecordsByTripArn(tripArn, 200)
         val myGroupOpt = groups.find(g => g.users.exists(_.userId == userId))
-        myGroupOpt match {
-          case None => Responses.json(404, """{"error":"Not Found","message":"User not in any group for this trip"}""")
-          case Some(g) =>
-            val expectedTrip = VersioningUtils.tripExpectedVersion(event, dao, tripArn)
-            val expectedGroup = VersioningUtils.groupExpectedVersion(event, dao, g.arn)
-            val updated = g.copy(users = g.users.filterNot(_.userId == userId))
-            try {
-              dao.updateUserGroup(g.arn, expectedGroup, expectedTrip, None, None, None, None, Some(updated.users), None)
+        val isDriverOnly = tm.driver.contains(userId) && myGroupOpt.isEmpty
 
-              // After leaving, check if the trip should be cancelled
-              val remainingGroups = groupsDAO.listUserGroupRecordsByTripArn(tripArn, 200)
-              val registeredUsersLeft = remainingGroups.exists(_.users.nonEmpty)
-
-              if (!registeredUsersLeft) {
-                // Last registered user left, so cancel the trip
-                dao.deleteTrip(tripArn)
-              }
-
-              Responses.json(200, """{"message":"Successfully left trip"}""")
-            } catch {
-              case _: Throwable => Responses.json(409, """{"error":"Version conflict"}""")
-            }
+        if (myGroupOpt.isDefined) {
+          // User is in a group: remove them from that group
+          val g = myGroupOpt.get
+          val expectedTrip = VersioningUtils.tripExpectedVersion(event, dao, tripArn)
+          val expectedGroup = VersioningUtils.groupExpectedVersion(event, dao, g.arn)
+          val updated = g.copy(users = g.users.filterNot(_.userId == userId))
+          try {
+            dao.updateUserGroup(g.arn, expectedGroup, expectedTrip, None, None, None, None, Some(updated.users), None)
+            val remainingGroups = groupsDAO.listUserGroupRecordsByTripArn(tripArn, 200)
+            if (!remainingGroups.exists(_.users.nonEmpty)) dao.deleteTrip(tripArn)
+            Responses.json(200, """{"message":"Successfully left trip"}""")
+          } catch {
+            case _: Throwable => Responses.json(409, """{"error":"Version conflict"}""")
+          }
+        } else if (isDriverOnly) {
+          // User is the driver and not in any group: clear driver and remove their UserTrip
+          val expectedTrip = VersioningUtils.tripExpectedVersion(event, dao, tripArn)
+          try {
+            val updatedTm = tm.copy(driver = None, driverName = None, driverPhotoUrl = None, driverConfirmed = Some(false))
+            dao.updateTripMetadata(updatedTm, expectedTrip)
+            dao.deleteUserTrip(dao.userTripArn(tripArn, userId))
+            val remainingGroups = groupsDAO.listUserGroupRecordsByTripArn(tripArn, 200)
+            if (!remainingGroups.exists(_.users.nonEmpty)) dao.deleteTrip(tripArn)
+            Responses.json(200, """{"message":"Successfully left trip"}""")
+          } catch {
+            case _: Throwable => Responses.json(409, """{"error":"Version conflict"}""")
+          }
+        } else {
+          Responses.json(404, """{"error":"Not Found","message":"User not in any group for this trip"}""")
         }
     }
   }
