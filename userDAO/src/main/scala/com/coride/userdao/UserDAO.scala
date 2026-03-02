@@ -126,7 +126,11 @@ class UserDAO(ddb: DynamoDbClient, usersTableName: String, contactIndexTableName
       sets += s"$nameKey = $valueKey"
     }
 
-    updates.name.foreach(v => add("name", AttributeValue.builder().s(v).build()))
+    updates.name.foreach { v =>
+      add("name", AttributeValue.builder().s(v).build())
+      val norm = normalizeName(v)
+      if (norm.nonEmpty) add("normalizedName", AttributeValue.builder().s(norm).build())
+    }
     updates.friendList.foreach(v => add("friendList", AttributeValue.builder().l(v.map(s => AttributeValue.builder().s(s).build()).asJava).build()))
     updates.incomingInvitations.foreach(v => add("incomingInvitations", AttributeValue.builder().l(v.map(s => AttributeValue.builder().s(s).build()).asJava).build()))
     updates.outgoingInvitations.foreach(v => add("outgoingInvitations", AttributeValue.builder().l(v.map(s => AttributeValue.builder().s(s).build()).asJava).build()))
@@ -254,6 +258,21 @@ class UserDAO(ddb: DynamoDbClient, usersTableName: String, contactIndexTableName
     userArnOpt.flatMap(getUser)
   }
 
+  /** List users by normalized name (no spaces, lowercase). Uses GSI gsiNormalizedName. */
+  def listUsersByNormalizedName(normalizedName: String, limit: Int = 50): List[User] = {
+    if (normalizedName.isEmpty) return Nil
+    val req = QueryRequest.builder()
+      .tableName(usersTableName)
+      .indexName("gsiNormalizedName")
+      .keyConditionExpression("#nk = :nv")
+      .expressionAttributeNames(Map("#nk" -> "normalizedName").asJava)
+      .expressionAttributeValues(Map(":nv" -> AttributeValue.builder().s(normalizedName).build()).asJava)
+      .limit(limit)
+      .build()
+    val res = ddb.query(req)
+    Option(res.items()).map(_.asScala.toList).getOrElse(Nil).map(it => fromItem(it))
+  }
+
   private def toItem(u: User): java.util.Map[String, AttributeValue] = {
     val m = scala.collection.mutable.Map[String, AttributeValue](
       "userArn" -> AttributeValue.builder().s(u.userArn).build(),
@@ -263,6 +282,8 @@ class UserDAO(ddb: DynamoDbClient, usersTableName: String, contactIndexTableName
       "createdAt" -> AttributeValue.builder().n(u.createdAt.toString).build(),
       "updatedAt" -> AttributeValue.builder().n(u.updatedAt.toString).build()
     )
+    val normName = normalizeName(u.name)
+    if (normName.nonEmpty) m += ("normalizedName" -> AttributeValue.builder().s(normName).build())
     u.email.foreach(e => m += ("email" -> AttributeValue.builder().s(e).build()))
     u.phone.foreach(p => m += ("phone" -> AttributeValue.builder().s(p).build()))
     u.description.foreach(d => m += ("description" -> AttributeValue.builder().s(d).build()))
@@ -298,4 +319,6 @@ class UserDAO(ddb: DynamoDbClient, usersTableName: String, contactIndexTableName
 
   private def normalizeEmail(email: Option[String]): Option[String] = email.map(_.trim.toLowerCase).filter(_.nonEmpty)
   private def normalizePhone(phone: Option[String]): Option[String] = phone.map(_.trim.replaceAll("\\s+", "")).filter(_.nonEmpty)
+  /** No spaces, lowercase; used for name search GSI. */
+  def normalizeName(name: String): String = name.trim.replaceAll("\\s+", "").toLowerCase
 }

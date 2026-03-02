@@ -36,6 +36,12 @@ export class CorideTables extends Construct {
       timeToLiveAttribute: shouldEnable('users') ? ttlAttr : undefined,
       stream: shouldEnable('users') ? streamView : undefined,
     });
+    // GSI for search by name: normalizedName = name with no spaces, lowercase
+    this.users.addGlobalSecondaryIndex({
+      indexName: 'gsiNormalizedName',
+      partitionKey: { name: 'normalizedName', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
 
     this.usergroups = new dynamodb.Table(this, 'UserGroups', {
       tableName: `${namePrefix}-UserGroups`,
