@@ -14,6 +14,7 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-databind" % "2.16.1",
   "com.coride" %% "tripDAO" % "0.1.0",
   "com.coride" %% "userDAO" % "0.1.0",
+  "com.coride" %% "userFriendsDAO" % "0.1.0",
   "com.coride" %% "rateLimitDAO" % "0.1.0",
   "org.scalatest" %% "scalatest" % "3.2.18" % Test,
   "org.mockito" % "mockito-core" % "5.11.0" % Test,

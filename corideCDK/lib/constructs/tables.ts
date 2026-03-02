@@ -16,6 +16,7 @@ export class CorideTables extends Construct {
   public readonly rateLimit: dynamodb.Table;
   public readonly emailFeedback: dynamodb.Table;
   public readonly userContactIndex: dynamodb.Table;
+  public readonly userFriends: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: CorideTablesProps = {}) {
     super(scope, id);
@@ -104,6 +105,16 @@ export class CorideTables extends Construct {
     this.userContactIndex = new dynamodb.Table(this, 'UserContactIndex', {
       tableName: `${namePrefix}-UserContactIndex`,
       partitionKey: { name: 'contactKey', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    // User friends: single-table design. PK=userArn, SK=sk (PROFILE | FRIEND#<friendUserArn>).
+    // One profile item per user; each accepted friendship stored under both users' partitions with denormalized friend userArn/name.
+    this.userFriends = new dynamodb.Table(this, 'UserFriends', {
+      tableName: `${namePrefix}-UserFriends`,
+      partitionKey: { name: 'userArn', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY,
     });
