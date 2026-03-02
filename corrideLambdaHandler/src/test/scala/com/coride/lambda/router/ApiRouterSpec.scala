@@ -7,6 +7,7 @@ import com.coride.lambda.util.JwtUtils
 import com.coride.lambda.dao.UserGroupsDAO
 import com.coride.tripdao.TripDAO
 import com.coride.userdao.UserDAO
+import com.coride.userfriendsdao.UserFriendsDAO
 import org.mockito.Mockito.mock
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient
 
@@ -34,8 +35,9 @@ class ApiRouterSpec extends AnyFunSuite {
     val tripDao = mock(classOf[TripDAO])
     val userDao = mock(classOf[UserDAO])
     val userGroupsDAO = mock(classOf[UserGroupsDAO])
+    val userFriendsDAO = mock(classOf[UserFriendsDAO])
     val jwt = mock(classOf[JwtUtils])
-    val router = new ApiRouter(ddb, tripDao, userDao, userGroupsDAO, jwt)
+    val router = new ApiRouter(ddb, tripDao, userDao, userGroupsDAO, userFriendsDAO, jwt)
     val event = new APIGatewayProxyRequestEvent()
     event.setHttpMethod("GET")
     event.setPath("/nope")

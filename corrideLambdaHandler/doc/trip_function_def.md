@@ -94,8 +94,8 @@ per-API handler logic: validate, construct from input/DB, write/update, return.
 
 **handler logic:**
 - Validate Bearer; userId from MeHandler (router). tripDao.getTripMetadata(tripArn); groupsDAO.listUserGroupRecordsByTripArn(tripArn). Validate caller is driver or in some group; else 403.
-- Validate body: optional startTime, notes, locations. If locations: must be permutation of existing; cannot move arrived location to later position.
-- Build updated TripMetadata from current + body. tripDao.updateTripMetadata(updated, expected).
+- Validate body: optional startTime, locations, car (plateNumber, color, model). If locations: must be permutation of existing; cannot move arrived location to later position.
+- Build updated TripMetadata from current + body (car from body or keep current; omit car in body to leave unchanged). tripDao.updateTripMetadata(updated, expected).
 - Single UpdateItem (conditional on version). Return 200 with updated trip or 409.
 
 ---

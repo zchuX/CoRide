@@ -2,7 +2,7 @@ package com.coride.lambda.features.trips
 
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
 import com.coride.lambda.util.{JsonUtils, JwtUtils, Responses, TokenUtils, VersioningUtils}
-import com.coride.tripdao.{Location, TripDAO, TripMetadata}
+import com.coride.tripdao.{Car, Location, TripDAO, TripMetadata}
 import com.coride.lambda.dao.UserGroupsDAO
 import com.fasterxml.jackson.databind.ObjectMapper
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient
@@ -63,9 +63,20 @@ class UpdateTripMetadataHandler(tripDao: TripDAO, userDao: UserDAO, groupsDAO: U
           case e: Throwable => return Responses.json(409, s"""{"error":"Conflict","message":"${e.getMessage}"}""")
         }
 
+        val carFromBody: Option[Option[Car]] = Option(node.get("car")) match {
+          case Some(cn) if cn != null && !cn.isNull => Some(Some(Car(
+            plateNumber = Option(cn.get("plateNumber")).filter(x => x != null && !x.isNull).map(_.asText()),
+            color = Option(cn.get("color")).filter(x => x != null && !x.isNull).map(_.asText()),
+            model = Option(cn.get("model")).filter(x => x != null && !x.isNull).map(_.asText())
+          )))
+          case Some(_) => Some(None)
+          case None => None
+        }
+
         val updated = tm.copy(
           startTime = Option(node.get("startTime")).filter(n => n != null && !n.isNull).map(_.asLong()).getOrElse(tm.startTime),
-          locations = updatedLocations
+          locations = updatedLocations,
+          car = carFromBody.getOrElse(tm.car)
         )
 
         try {
@@ -84,9 +95,21 @@ class UpdateTripMetadataHandler(tripDao: TripDAO, userDao: UserDAO, groupsDAO: U
     node.put("startTime", tm.startTime)
     node.put("status", tm.status)
     tm.driver.foreach(node.put("driver", _))
+    tm.driverName.foreach(node.put("driverName", _))
+    tm.driverPhotoUrl.foreach(node.put("driverPhotoUrl", _))
+    tm.driverConfirmed.foreach(node.put("driverConfirmed", _))
+    tm.car.foreach { c =>
+      val carNode = mapper.createObjectNode()
+      c.plateNumber.foreach(carNode.put("plateNumber", _))
+      c.color.foreach(carNode.put("color", _))
+      c.model.foreach(carNode.put("model", _))
+      node.set("car", carNode)
+    }
     val locationsNode = mapper.createArrayNode()
     tm.locations.foreach(l => locationsNode.add(l.locationName))
     node.set("locations", locationsNode)
+    tm.notes.foreach(node.put("notes", _))
+    node.put("version", tm.version)
     node
   }
 }

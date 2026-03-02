@@ -10,7 +10,8 @@ lazy val root = (project in file(".")).
     libraryDependencies ++= Seq(
       "software.amazon.awssdk" % "dynamodb" % "2.25.43",
       "software.amazon.awssdk" % "url-connection-client" % "2.25.43",
-      "org.scalatest" %% "scalatest" % "3.2.18" % Test
+      "org.scalatest" %% "scalatest" % "3.2.18" % Test,
+      "org.mockito" % "mockito-core" % "5.12.0" % Test
     ),
     assembly / assemblyJarName := "userFriendsDAO-assembly.jar",
     ThisBuild / assemblyMergeStrategy := {

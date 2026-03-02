@@ -161,12 +161,16 @@
           "locations": {
             "type": "Option[List[String]]",
             "description": "Ordered list of location names (permutation of existing). Cannot move an already-arrived location later."
+          },
+          "car": {
+            "type": "Option[Car]",
+            "description": "Updated car info: plateNumber, color, model (all optional strings). Omit to leave car unchanged; send null or {} to clear."
           }
         }
       },
       "response": {
         "200": {
-          "description": "Updated TripMetadata.",
+          "description": "Updated TripMetadata (includes car, driverName, driverPhotoUrl, notes, version).",
           "body": "TripMetadata"
         },
         "400": "Validation error (invalid location reorder, etc.).",

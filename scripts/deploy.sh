@@ -5,6 +5,11 @@ set -euo pipefail
 # scripts/deploy.sh --stage dev|staging|prod [--build-scala all|handler|daos|none] [--deploy all|infra|lambda|code|none] [--recreate]
 # Defaults: --build-scala all, --deploy all
 # Use --deploy lambda to deploy only the API Lambda (trip stack); faster when only handler code changed.
+#
+# Deployment order (for phased deploy to dev):
+#   1. Build: DAOs first (tripDAO, userDAO, userFriendsDAO, rateLimitDAO) with publishLocal, then handler assembly.
+#   2. CDK deploy --all: stacks deploy in dependency order (tables/auth-infra -> trip/API/Lambda -> edge -> feedback).
+#   So tables exist before Lambda; API Gateway and Lambda are updated together in the trip stack.
 
 STAGE=""
 BUILD_SCALA="all"
@@ -54,6 +59,7 @@ if [[ "$BUILD_SCALA" != "none" ]]; then
     all)
       build_project "$ROOT_DIR/tripDAO" true
       build_project "$ROOT_DIR/userDAO" true
+      build_project "$ROOT_DIR/userFriendsDAO" true
       build_project "$ROOT_DIR/rateLimitDAO" true
       build_project "$ROOT_DIR/corrideLambdaHandler" false
       ;;
@@ -63,6 +69,7 @@ if [[ "$BUILD_SCALA" != "none" ]]; then
     daos)
       build_project "$ROOT_DIR/tripDAO" true
       build_project "$ROOT_DIR/userDAO" true
+      build_project "$ROOT_DIR/userFriendsDAO" true
       build_project "$ROOT_DIR/rateLimitDAO" true
       ;;
     *)
