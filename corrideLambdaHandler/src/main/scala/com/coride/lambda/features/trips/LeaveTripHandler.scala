@@ -32,13 +32,19 @@ object LeaveTripHandler {
         val isDriverOnly = tm.driver.contains(userId) && myGroupOpt.isEmpty
 
         if (myGroupOpt.isDefined) {
-          // User is in a group: remove them from that group
+          // User is in a group: remove them from that group, or delete the group if they are the last member
           val g = myGroupOpt.get
           val expectedTrip = VersioningUtils.tripExpectedVersion(event, dao, tripArn)
           val expectedGroup = VersioningUtils.groupExpectedVersion(event, dao, g.arn)
           val updated = g.copy(users = g.users.filterNot(_.userId == userId))
+          val isLastInGroup = updated.users.isEmpty && g.numAnonymousUsers == 0
           try {
-            dao.updateUserGroup(g.arn, expectedGroup, expectedTrip, None, None, None, None, Some(updated.users), None)
+            if (isLastInGroup) {
+              // Last user (and no anonymous): delete the user group and remove it from trip metadata
+              dao.removeUserGroup(g.arn, expectedTrip, expectedGroup)
+            } else {
+              dao.updateUserGroup(g.arn, expectedGroup, expectedTrip, None, None, None, None, Some(updated.users), None)
+            }
             val remainingGroups = groupsDAO.listUserGroupRecordsByTripArn(tripArn, 200)
             if (!remainingGroups.exists(_.users.nonEmpty)) dao.deleteTrip(tripArn)
             Responses.json(200, """{"message":"Successfully left trip"}""")

@@ -8,8 +8,11 @@ set -euo pipefail
 #
 # Deployment order (for phased deploy to dev):
 #   1. Build: DAOs first (tripDAO, userDAO, userFriendsDAO, rateLimitDAO) with publishLocal, then handler assembly.
-#   2. CDK deploy --all: stacks deploy in dependency order (tables/auth-infra -> trip/API/Lambda -> edge -> feedback).
-#   So tables exist before Lambda; API Gateway and Lambda are updated together in the trip stack.
+#   2. CDK deploy: lambdaJar is passed as absolute path from this repo so the freshly built JAR is always used (no cache ambiguity).
+#   3. Stacks deploy in dependency order (tables/auth-infra -> trip/API/Lambda -> edge -> feedback).
+#
+# Standard deploy (no forcing): run with default --build-scala all so the JAR is built then deployed. For lambda-only
+# deploy use --build-scala handler so the handler is rebuilt and its path is passed to CDK.
 
 STAGE=""
 BUILD_SCALA="all"
@@ -93,6 +96,15 @@ esac
 
 TRIP_STACK="coride-trip-${STAGE}"
 
+# Absolute path to the Lambda JAR so CDK always uses the JAR from this repo (avoids relative-path/cache ambiguity).
+LAMBDA_JAR="${ROOT_DIR}/corrideLambdaHandler/target/scala-2.13/corrideLambdaHandler-assembly.jar"
+if [[ "$DEPLOY_MODE" == "all" || "$DEPLOY_MODE" == "lambda" ]]; then
+  if [[ ! -f "$LAMBDA_JAR" ]]; then
+    echo "[!] Lambda JAR not found at $LAMBDA_JAR. Run with --build-scala handler or all first." >&2
+    exit 1
+  fi
+fi
+
 if [[ "$DEPLOY_MODE" == "all" || "$DEPLOY_MODE" == "infra" ]]; then
   echo "[+] Installing and building CDK app in $cdk_dir"
   (cd "$cdk_dir" && npm install && npm run build)
@@ -102,11 +114,11 @@ if [[ "$DEPLOY_MODE" == "all" || "$DEPLOY_MODE" == "infra" ]]; then
     (cd "$cdk_dir" && npx cdk destroy --all --force)
   fi
   echo "[+] Deploying CDK stacks for stage $STAGE (all stacks)"
-  (cd "$cdk_dir" && npx cdk deploy --all --require-approval never)
+  (cd "$cdk_dir" && npx cdk deploy --all --require-approval never -c "lambdaJar=$LAMBDA_JAR")
 elif [[ "$DEPLOY_MODE" == "lambda" ]]; then
-  echo "[+] Lambda-only deploy: building CDK app and deploying $TRIP_STACK"
+  echo "[+] Lambda-only deploy: building CDK app and deploying $TRIP_STACK (JAR: $LAMBDA_JAR)"
   (cd "$cdk_dir" && npm install && npm run build)
-  (cd "$cdk_dir" && npx cdk deploy "$TRIP_STACK" --require-approval never)
+  (cd "$cdk_dir" && npx cdk deploy "$TRIP_STACK" --require-approval never -c "lambdaJar=$LAMBDA_JAR")
   echo "[+] Skipping API endpoint persistence (use --deploy all to refresh scripts/.api/<stage>.json)"
 
   echo "[+] Persisting API endpoint and key for stage $STAGE"

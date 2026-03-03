@@ -122,8 +122,8 @@ per-API handler logic: validate, construct from input/DB, write/update, return.
 
 **handler logic:**
 - Validate Bearer; JWT verify. tripDao.getTripMetadata(tripArn); groupsDAO.listUserGroupRecordsByTripArn(tripArn). Find group containing caller; else 404.
-- Build updated group (users without caller). tripDao.updateUserGroup(groupArn, expectedGroup, expectedTrip, ..., users = updated). Then groupsDAO.listUserGroupRecordsByTripArn; if no users left in any group, tripDao.deleteTrip(tripArn).
-- Transaction updateUserGroup (Update UserGroupRecord, Put/Delete UserTrips, Update TripMetadata). Optionally transaction deleteTrip (Delete TripMetadata, all UserGroupRecords, all UserTrips). Return 200 "Successfully left trip" or 409.
+- Build updated group (users without caller). If the leaving user is the last member of the group (updated users empty and numAnonymousUsers == 0): tripDao.removeUserGroup(groupArn, expectedTrip, expectedGroup) to delete the user group and remove it from TripMetadata.usergroups. Otherwise tripDao.updateUserGroup(groupArn, expectedGroup, expectedTrip, ..., users = updated). Then groupsDAO.listUserGroupRecordsByTripArn; if no users left in any group, tripDao.deleteTrip(tripArn).
+- Transaction updateUserGroup or removeUserGroup (Update/Delete UserGroupRecord, Put/Delete UserTrips, Update TripMetadata). Optionally transaction deleteTrip (Delete TripMetadata, all UserGroupRecords, all UserTrips). Return 200 "Successfully left trip" or 409.
 
 ---
 

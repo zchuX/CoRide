@@ -47,15 +47,17 @@ class UpdateTripMetadataHandlerSpec extends AnyFunSuite with Matchers with Mocki
     val mockTripDAO = mock[TripDAO]
     val mockUserGroupsDAO = mock[UserGroupsDAO]
     val locations = List(
-      Location("A", arrived = true), 
-      Location("B"), 
-      Location("C", arrived = true), 
+      Location("A", arrived = true),
+      Location("B"),
+      Location("C", arrived = true),
       Location("D")
     )
     val trip = TripMetadata("trip-123", locations, 0L, None, "Upcoming", None, Some("driver-456"), None, None, None, None, None, None, None, 1)
     val group = UserGroupRecord("group-1", "trip-123", "Group 1", "A", "D", 0L, List(GroupUser("user-123", "Test", None, true)), 0, 1)
     when(mockTripDAO.getTripMetadata("trip-123")).thenReturn(Some(trip))
     when(mockUserGroupsDAO.listUserGroupRecordsByTripArn("trip-123")).thenReturn(List(group))
+    when(mockTripDAO.userTripArn("trip-123", "user-123")).thenReturn("trip-123:user-123")
+    when(mockTripDAO.getUserTrip("trip-123:user-123")).thenReturn(None)
 
     val handler = new UpdateTripMetadataHandler(mockTripDAO, mock[UserDAO], mockUserGroupsDAO)
     val event = createMockEvent("""{"locations": ["A", "C", "B", "D"]}""")

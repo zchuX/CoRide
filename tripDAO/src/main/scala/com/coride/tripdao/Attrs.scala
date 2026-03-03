@@ -8,6 +8,15 @@ object Attrs {
   def n(v: Long): AttributeValue = AttributeValue.builder().n(v.toString).build()
   def nInt(v: Int): AttributeValue = AttributeValue.builder().n(v.toString).build()
   def bool(v: Boolean): AttributeValue = AttributeValue.builder().bool(v).build()
-  def list(vs: List[AttributeValue]): AttributeValue = AttributeValue.builder().l(vs.asJava).build()
-  def map(m: Map[String, AttributeValue]): AttributeValue = AttributeValue.builder().m(m.asJava).build()
+  // Use explicit Java collections to avoid Scala .asJava -> Lambda ClassLoader Nothing inference
+  def list(vs: List[AttributeValue]): AttributeValue = {
+    val jlist = new java.util.ArrayList[AttributeValue](vs.size)
+    vs.foreach(v => jlist.add(v))
+    AttributeValue.builder().l(jlist).build()
+  }
+  def map(m: Map[String, AttributeValue]): AttributeValue = {
+    val jmap = new java.util.HashMap[String, AttributeValue](m.size)
+    m.foreach { case (k, v) => jmap.put(k, v) }
+    AttributeValue.builder().m(jmap).build()
+  }
 }

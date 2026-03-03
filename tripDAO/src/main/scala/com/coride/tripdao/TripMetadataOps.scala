@@ -102,22 +102,25 @@ class TripMetadataOps(client: DynamoDbClient, tripMetadataTable: String) {
       "#driverPhotoUrl" -> "driverPhotoUrl", "#driverConfirmed" -> "driverConfirmed", "#car" -> "car",
       "#usergroups" -> "usergroups", "#users" -> "users", "#notes" -> "notes", "#version" -> "version"
     ).asJava
-    val values = Map(
-      ":locations" -> locationsToAttr(t.locations),
-      ":startTime" -> n(t.startTime),
-      ":completionTime" -> t.completionTime.map(n).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":status" -> s(t.status),
-      ":currentStop" -> t.currentStop.map(s).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":driver" -> t.driver.map(s).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":driverName" -> t.driverName.map(s).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":driverPhotoUrl" -> t.driverPhotoUrl.map(s).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":driverConfirmed" -> t.driverConfirmed.map(bool).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":car" -> t.car.map(ModelCodec.carToAttr).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":usergroups" -> t.usergroups.map(ugs => usergroupsToAttr(ugs)).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":users" -> t.users.map(us => Attrs.list(us.map(ModelCodec.tripUserToAttr))).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":notes" -> t.notes.map(s).getOrElse(AttributeValue.builder().nul(true).build()),
-      ":zero" -> nInt(0), ":inc" -> nInt(1), ":expected" -> nInt(expectedVersion)
-    ).asJava
+    // Build values with explicit Java HashMap to avoid Scala .asJava -> Lambda ClassLoader Nothing inference
+    val nulAttr: AttributeValue = AttributeValue.builder().nul(true).build()
+    val values = new java.util.HashMap[String, AttributeValue]()
+    values.put(":locations", locationsToAttr(t.locations))
+    values.put(":startTime", n(t.startTime))
+    values.put(":completionTime", t.completionTime.map(n).getOrElse(nulAttr))
+    values.put(":status", s(t.status))
+    values.put(":currentStop", t.currentStop.map(s).getOrElse(nulAttr))
+    values.put(":driver", t.driver.map(s).getOrElse(nulAttr))
+    values.put(":driverName", t.driverName.map(s).getOrElse(nulAttr))
+    values.put(":driverPhotoUrl", t.driverPhotoUrl.map(s).getOrElse(nulAttr))
+    values.put(":driverConfirmed", t.driverConfirmed.map(bool).getOrElse(nulAttr))
+    values.put(":car", t.car.map(ModelCodec.carToAttr).getOrElse(nulAttr))
+    values.put(":usergroups", t.usergroups.map(ugs => usergroupsToAttr(ugs)).getOrElse(nulAttr))
+    values.put(":users", t.users.map(us => Attrs.list(us.map(ModelCodec.tripUserToAttr))).getOrElse(nulAttr))
+    values.put(":notes", t.notes.map(s).getOrElse(nulAttr))
+    values.put(":zero", nInt(0))
+    values.put(":inc", nInt(1))
+    values.put(":expected", nInt(expectedVersion))
     val sets = List(
       "#locations = :locations", "#startTime = :startTime", "#completionTime = :completionTime",
       "#status = :status", "#currentStop = :currentStop", "#driver = :driver", "#driverName = :driverName",
@@ -126,9 +129,11 @@ class TripMetadataOps(client: DynamoDbClient, tripMetadataTable: String) {
       "#version = if_not_exists(#version, :zero) + :inc"
     ).mkString(", ")
 
+    val key = new java.util.HashMap[String, AttributeValue]()
+    key.put("tripArn", s(t.tripArn))
     val req = UpdateItemRequest.builder()
       .tableName(tripMetadataTable)
-      .key(Map("tripArn" -> s(t.tripArn)).asJava)
+      .key(key)
       .expressionAttributeNames(names)
       .expressionAttributeValues(values)
       .updateExpression(s"SET $sets")

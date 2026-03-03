@@ -2,12 +2,13 @@ package com.coride.lambda.util
 
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent
 import com.coride.tripdao.TripDAO
+import com.fasterxml.jackson.databind.JsonNode
 
 object VersioningUtils {
   private def parseExpectedVersion(event: APIGatewayProxyRequestEvent): Option[Int] = {
     val body = Option(event.getBody).getOrElse("")
-    val json = JsonUtils.parse(body)
-    val v = json.get("version")
+    val json: JsonNode = JsonUtils.parse(body)
+    val v: JsonNode = json.get("version")
     if (v != null && !v.isNull) {
       try { Some(v.asInt()) } catch { case _: Throwable => None }
     } else None
