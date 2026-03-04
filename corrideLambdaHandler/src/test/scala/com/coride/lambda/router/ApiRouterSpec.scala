@@ -4,7 +4,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent
 import com.amazonaws.services.lambda.runtime.Context
 import com.coride.lambda.util.JwtUtils
-import com.coride.lambda.dao.UserGroupsDAO
+import com.coride.lambda.dao.{UserGroupsDAO, GarageDAO}
 import com.coride.tripdao.TripDAO
 import com.coride.userdao.UserDAO
 import com.coride.userfriendsdao.UserFriendsDAO
@@ -36,8 +36,9 @@ class ApiRouterSpec extends AnyFunSuite {
     val userDao = mock(classOf[UserDAO])
     val userGroupsDAO = mock(classOf[UserGroupsDAO])
     val userFriendsDAO = mock(classOf[UserFriendsDAO])
+    val garageDAO = mock(classOf[GarageDAO])
     val jwt = mock(classOf[JwtUtils])
-    val router = new ApiRouter(ddb, tripDao, userDao, userGroupsDAO, userFriendsDAO, jwt)
+    val router = new ApiRouter(ddb, tripDao, userDao, userGroupsDAO, userFriendsDAO, garageDAO, jwt)
     val event = new APIGatewayProxyRequestEvent()
     event.setHttpMethod("GET")
     event.setPath("/nope")

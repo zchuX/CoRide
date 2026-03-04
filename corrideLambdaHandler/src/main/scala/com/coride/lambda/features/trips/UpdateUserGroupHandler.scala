@@ -27,9 +27,11 @@ object UpdateUserGroupHandler {
     current match {
       case None => Responses.json(404, """{"error":"Group not found"}""")
       case Some(g) =>
-        // Membership gate: only members can modify the group
+        // Allow group members or the trip driver to modify the group
         val isMember = g.users.exists(_.userId == actingUserId)
-        if (!isMember) return Responses.json(403, """{"error":"Forbidden","message":"Not a member of this userGroup"}""")
+        val tripOpt = dao.getTripMetadata(g.tripArn)
+        val isDriver = tripOpt.exists(_.driver.contains(actingUserId))
+        if (!isMember && !isDriver) return Responses.json(403, """{"error":"Forbidden","message":"Not a member of this userGroup"}""")
 
         val groupName = Option(node.get("groupName")).map(_.asText())
         val start = Option(node.get("start")).map(_.asText())
@@ -52,7 +54,6 @@ object UpdateUserGroupHandler {
         val numAnonymousUsers = Option(node.get("numAnonymousUsers")).map(_.asInt())
 
         val newUsersList = users.getOrElse(g.users)
-        val tripOpt = dao.getTripMetadata(g.tripArn)
         if (tripOpt.isDefined) {
           val otherGroups = dao.listUserGroupRecordsByTripArn(g.tripArn).filter(_.arn != groupArn)
           val syntheticGroups = otherGroups :+ g.copy(users = newUsersList)

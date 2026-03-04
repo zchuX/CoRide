@@ -9,10 +9,11 @@ import com.coride.lambda.features.auth._
 import com.coride.lambda.util.{JsonUtils, Responses, JwtUtils}
 import com.coride.lambda.features.trips._
 import com.coride.lambda.features.friends._
+import com.coride.lambda.features.garage._
 import com.coride.tripdao.TripDAO
 import com.coride.userdao.UserDAO
 import com.coride.userfriendsdao.UserFriendsDAO
-import com.coride.lambda.dao.UserGroupsDAO
+import com.coride.lambda.dao.{UserGroupsDAO, GarageDAO}
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient
@@ -20,7 +21,7 @@ import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient
 class ValidationException(message: String) extends RuntimeException(message)
 class UnauthorizedException(message: String) extends RuntimeException(message)
 
-class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGroupsDAO: UserGroupsDAO, userFriendsDAO: UserFriendsDAO, jwt: JwtUtils) extends RequestHandler[APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent] {
+class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGroupsDAO: UserGroupsDAO, userFriendsDAO: UserFriendsDAO, garageDAO: GarageDAO, jwt: JwtUtils) extends RequestHandler[APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent] {
 
   /** Decode path segment so that group:uuid in URL as group%3Auuid is looked up as group:uuid. */
   private def decodePathSegment(s: String): String =
@@ -32,6 +33,7 @@ class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGro
     UserDAO(),
     new UserGroupsDAO(),
     UserFriendsDAO(),
+    new GarageDAO(),
     new JwtUtils(Option(System.getenv("USER_POOL_ID")).getOrElse(""), Option(System.getenv("AWS_REGION")).getOrElse("us-east-1"), Option(System.getenv("USER_POOL_CLIENT_ID")).getOrElse(""))
   )
   private val createTripHandler = new CreateTripHandler()
@@ -40,6 +42,11 @@ class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGro
   private val getFriendsProfileHandler = new GetFriendsProfileHandler(userFriendsDAO)
   private val addFriendHandler = new AddFriendHandler(userDao, userFriendsDAO)
   private val removeFriendHandler = new RemoveFriendHandler(userFriendsDAO)
+  private val addCarToGarageHandler = new AddCarToGarageHandler(garageDAO)
+  private val listGarageCarsHandler = new ListGarageCarsHandler(garageDAO)
+  private val getCarHandler = new GetCarHandler(garageDAO)
+  private val updateCarHandler = new UpdateCarHandler(garageDAO)
+  private val deleteCarHandler = new DeleteCarHandler(garageDAO)
 
   override def handleRequest(event: APIGatewayProxyRequestEvent, context: Context): APIGatewayProxyResponseEvent = {
     val method = Option(event.getHttpMethod).getOrElse("")
@@ -107,6 +114,30 @@ class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGro
           val friendUserArn = p.stripPrefix("/api/friends/")
           val user = MeHandler.decode(event)
           removeFriendHandler.handle(user, event, friendUserArn)
+
+        // ---------- Garage Endpoints ----------
+        case ("GET", "/api/garage") =>
+          val user = MeHandler.decode(event)
+          listGarageCarsHandler.handle(user, event)
+
+        case ("POST", "/api/garage") =>
+          val user = MeHandler.decode(event)
+          addCarToGarageHandler.handle(user, event)
+
+        case ("GET", p) if p.startsWith("/api/garage/") =>
+          val carArn = decodePathSegment(p.stripPrefix("/api/garage/"))
+          val user = MeHandler.decode(event)
+          getCarHandler.handle(user, event, carArn)
+
+        case ("PUT", p) if p.startsWith("/api/garage/") =>
+          val carArn = decodePathSegment(p.stripPrefix("/api/garage/"))
+          val user = MeHandler.decode(event)
+          updateCarHandler.handle(user, event, carArn)
+
+        case ("DELETE", p) if p.startsWith("/api/garage/") =>
+          val carArn = decodePathSegment(p.stripPrefix("/api/garage/"))
+          val user = MeHandler.decode(event)
+          deleteCarHandler.handle(user, event, carArn)
 
         // ---------- Trip Endpoints ----------
         case ("GET", "/api/trips") =>

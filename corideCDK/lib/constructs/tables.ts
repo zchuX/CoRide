@@ -17,6 +17,7 @@ export class CorideTables extends Construct {
   public readonly emailFeedback: dynamodb.Table;
   public readonly userContactIndex: dynamodb.Table;
   public readonly userFriends: dynamodb.Table;
+  public readonly garage: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: CorideTablesProps = {}) {
     super(scope, id);
@@ -123,6 +124,19 @@ export class CorideTables extends Construct {
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    // Garage: user's cars. PK=carArn; GSI by userArn to list cars per user.
+    this.garage = new dynamodb.Table(this, 'Garage', {
+      tableName: `${namePrefix}-Garage`,
+      partitionKey: { name: 'carArn', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    this.garage.addGlobalSecondaryIndex({
+      indexName: 'gsiUserArn',
+      partitionKey: { name: 'userArn', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
     });
   }
 }

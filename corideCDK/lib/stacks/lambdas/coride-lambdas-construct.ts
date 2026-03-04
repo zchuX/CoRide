@@ -60,6 +60,7 @@ export class CorideLambdas extends Construct {
         RATE_LIMIT_TABLE: tables.rateLimit.tableName,
         USER_CONTACT_INDEX_TABLE_NAME: tables.userContactIndex.tableName,
         USER_FRIENDS_TABLE: tables.userFriends.tableName,
+        GARAGE_TABLE: tables.garage.tableName,
         USER_POOL_ID: userPool.userPoolId,
         USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
         LOGIN_LIMIT: String(loginLimit),
@@ -107,6 +108,7 @@ export class CorideLambdas extends Construct {
     tables.rateLimit.grantReadWriteData(this.apiLambda);
     tables.userContactIndex.grantReadWriteData(this.apiLambda);
     tables.userFriends.grantReadWriteData(this.apiLambda);
+    tables.garage.grantReadWriteData(this.apiLambda);
 
     // Version and alias for API Lambda
     const apiVersion = this.apiLambda.currentVersion;
