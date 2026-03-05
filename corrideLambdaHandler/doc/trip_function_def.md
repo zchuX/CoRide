@@ -122,7 +122,7 @@ per-API handler logic: validate, construct from input/DB, write/update, return.
 
 **handler logic:**
 - Validate Bearer; JWT verify. tripDao.getTripMetadata(tripArn); groupsDAO.listUserGroupRecordsByTripArn(tripArn). Find group containing caller; else 404.
-- Build updated group (users without caller). If the leaving user is the last member of the group (updated users empty and numAnonymousUsers == 0): tripDao.removeUserGroup(groupArn, expectedTrip, expectedGroup) to delete the user group and remove it from TripMetadata.usergroups. Otherwise tripDao.updateUserGroup(groupArn, expectedGroup, expectedTrip, ..., users = updated). Then groupsDAO.listUserGroupRecordsByTripArn; if no users left in any group, tripDao.deleteTrip(tripArn).
+- Build updated group (users without caller). If the leaving user is the last member of the group (updated users empty): tripDao.removeUserGroup(groupArn, expectedTrip, expectedGroup) to delete the user group and remove it from TripMetadata.usergroups. Otherwise tripDao.updateUserGroup(groupArn, expectedGroup, expectedTrip, ..., users = updated). Then groupsDAO.listUserGroupRecordsByTripArn; if no users left in any group, tripDao.deleteTrip(tripArn).
 - Transaction updateUserGroup or removeUserGroup (Update/Delete UserGroupRecord, Put/Delete UserTrips, Update TripMetadata). Optionally transaction deleteTrip (Delete TripMetadata, all UserGroupRecords, all UserTrips). Return 200 "Successfully left trip" or 409.
 
 ---
@@ -149,7 +149,7 @@ per-API handler logic: validate, construct from input/DB, write/update, return.
 **api:** POST /api/user-groups
 
 **handler logic:**
-- Validate Bearer. Validate body: tripArn, groupName, start, destination, pickupTime required; optional users, numAnonymousUsers. groupArn is server-generated (not accepted from client). tripDao.getTripMetadata(tripArn); tripDao.listUserGroupRecordsByTripArn(tripArn). TripValidation: no duplicate users in trip (driver + all groups including new).
+- Validate Bearer. Validate body: tripArn, groupName, start, destination, pickupTime required; optional users. groupArn is server-generated (not accepted from client). tripDao.getTripMetadata(tripArn); tripDao.listUserGroupRecordsByTripArn(tripArn). TripValidation: no duplicate users in trip (driver + all groups including new).
 - Generate groupArn. Build UserGroupRecord. tripDao.addUserGroup(tripArn, newGroup, expectedTrip).
 - Transaction: Update TripMetadata (usergroups, locations, version), PutItem UserGroupRecord, PutItem UserTrip per user in new group. Return 200 with created group (includes groupArn) or 409.
 
@@ -159,7 +159,7 @@ per-API handler logic: validate, construct from input/DB, write/update, return.
 
 **handler logic:**
 - Validate Bearer. tripDao.getUserGroup(groupArn). Validate caller is member of group.
-- Validate body: optional groupName, start, destination, pickupTime, users, numAnonymousUsers. tripDao.getTripMetadata; listUserGroupRecordsByTripArn. TripValidation: no duplicate users across groups.
+- Validate body: optional groupName, start, destination, pickupTime, users. tripDao.getTripMetadata; listUserGroupRecordsByTripArn. TripValidation: no duplicate users across groups.
 - tripDao.updateUserGroup(groupArn, ...). Then tripDao.getUserGroup(groupArn) for response.
 - Transaction: Update UserGroupRecord, Put/Delete UserTrips as needed, Update TripMetadata. Return 200 with updated group or 409.
 
@@ -177,6 +177,43 @@ per-API handler logic: validate, construct from input/DB, write/update, return.
 **api:** POST /api/user-groups/{groupArn}/join
 
 **handler logic:**
-- Validate Bearer. tripDao.getUserGroup(groupArn). Validate numAnonymousUsers >= 1 and caller not already in group.
-- Build GroupUser for caller (accept=true). tripDao.joinGroup(groupArn, newUser, group.version).
-- Single UpdateItem on UserGroups table (list_append users, decrement numAnonymousUsers, version++). No UserTrip created for joiner. Return 200 with updated group or 409.
+- Validate Bearer. tripDao.getUserGroup(groupArn). Validate caller not already in group.
+- Build GroupUser for caller (accept=true). tripDao.updateUserGroup(groupArn, group.version, trip.version, ..., users = Some(group.users :+ newUser)). Creates UserTrip for joiner. Return 200 with updated group or 409.
+
+---
+
+**api:** GET /api/garage
+
+**handler logic:**
+- Validate Bearer; JWT verify. Resolve user via MeHandler.decode.
+- garageDAO.listByUserArn(user.userArn, limit). Optional query limit (default 100).
+- No write. Return 200 with { "cars": [ ... ] }.
+
+---
+
+**api:** POST /api/garage
+
+**handler logic:**
+- Validate Bearer; JWT verify. Resolve user. Parse body (all optional: make, model, color, carPlate, stateRegistered).
+- Generate carArn (e.g. car:uuid). garageDAO.put(GarageCar(...)). Return 200 with created car.
+
+---
+
+**api:** GET /api/garage/{carArn}
+
+**handler logic:**
+- Validate Bearer; JWT verify. garageDAO.get(carArn). If not found 404; if car.userArn != user.userArn 403. Return 200 with car.
+
+---
+
+**api:** PUT /api/garage/{carArn}
+
+**handler logic:**
+- Validate Bearer; JWT verify. garageDAO.get(carArn). If not found 404; if not owner 403. Merge body fields (all optional) with existing; garageDAO.update(updated). Return 200 with updated car.
+
+---
+
+**api:** DELETE /api/garage/{carArn}
+
+**handler logic:**
+- Validate Bearer; JWT verify. garageDAO.get(carArn). If not found 404; if not owner 403. garageDAO.delete(carArn). Return 200 with status message.

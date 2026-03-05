@@ -69,14 +69,19 @@ class UpdateTripMetadataHandler(tripDao: TripDAO, userDao: UserDAO, groupsDAO: U
               throw new Exception(s"Cannot move arrived location ${validationError.get.locationName} to a later position")
             }
 
-            names.map { name =>
-              tm.locations.find(_.locationName == name) match {
-                case Some(loc) => loc
-                case None => throw new Exception(s"Location '$name' is not in the trip's current locations: ${tm.locations.map(_.locationName).mkString(", ")}")
-              }
+            val groups = groupsDAO.listUserGroupRecordsByTripArn(tripArn)
+            Option(tripDao.validateDropoffAfterPickupByNames(names, groups)).flatten.foreach { msg =>
+              throw new IllegalArgumentException(msg)
             }
+
+            // Recompute locations from groups so plannedTime is consistent (only pickup locations get earliest plannedTime; driver-only/dropoff-only get 0L)
+            tripDao.locationsForOrderAndGroups(names, groups, tm.locations)
           }.getOrElse(tm.locations)
         } catch {
+          case e: IllegalArgumentException =>
+            Logger.warn(s"UpdateTripMetadata: tripArn=$tripArn locations validation failed ex=${e.getClass.getSimpleName} message=${Option(e.getMessage).getOrElse("")}")
+            val msg = Option(e.getMessage).getOrElse("Invalid request").replace("\\", "\\\\").replace("\"", "\\\"")
+            return Responses.json(400, s"""{"error":"Bad Request","message":"$msg"}""")
           case e: Throwable =>
             Logger.warn(s"UpdateTripMetadata: tripArn=$tripArn locations validation failed ex=${e.getClass.getSimpleName} message=${Option(e.getMessage).getOrElse("")}")
             return conflictJson(Option(e.getMessage).getOrElse(e.getClass.getSimpleName))

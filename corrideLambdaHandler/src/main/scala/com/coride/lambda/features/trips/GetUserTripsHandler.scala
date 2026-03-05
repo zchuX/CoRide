@@ -139,7 +139,6 @@ object GetUserTripsHandler {
     gn.put("start", g.start)
     gn.put("destination", g.destination)
     gn.put("pickupTime", g.pickupTime)
-    // Only include detailed entries for named users; anonymous count from record
     val users = mapper.createArrayNode()
     g.users.foreach { u =>
       val un = mapper.createObjectNode()
@@ -150,7 +149,6 @@ object GetUserTripsHandler {
       users.add(un)
     }
     gn.set("users", users)
-    gn.put("numAnonymousUser", g.numAnonymousUsers)
     gn.put("version", g.version)
     gn
   }

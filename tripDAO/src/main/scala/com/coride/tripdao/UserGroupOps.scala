@@ -78,7 +78,6 @@ class UserGroupOps(
         destination = getS("destination").getOrElse(""),
         pickupTime = getN("pickupTime").getOrElse(0L),
         users = users,
-        numAnonymousUsers = item.get("numAnonymousUsers").flatMap(av => Option(av.n())).map(_.toInt).getOrElse(0),
         version = item.get("version").flatMap(av => Option(av.n())).map(_.toInt).getOrElse(1)
       )
     }
@@ -114,8 +113,7 @@ class UserGroupOps(
     start: Option[String],
     destination: Option[String],
     pickupTime: Option[Long],
-    users: Option[List[GroupUser]],
-    numAnonymousUsers: Option[Int]
+    users: Option[List[GroupUser]]
   ): Unit = {
     val groupOpt = getUserGroup(groupArn)
     val tripOpt = groupOpt.flatMap(g => dao.getTripMetadata(g.tripArn))
@@ -128,7 +126,6 @@ class UserGroupOps(
           destination = destination.getOrElse(group.destination),
           pickupTime = pickupTime.getOrElse(group.pickupTime),
           users = users.getOrElse(group.users),
-          numAnonymousUsers = numAnonymousUsers.getOrElse(group.numAnonymousUsers),
           version = group.version + 1
         )
 
@@ -137,11 +134,11 @@ class UserGroupOps(
         val groupUpdate = Update.builder()
           .tableName(userGroupsTable)
           .key(Map("groupArn" -> s(group.arn)).asJava)
-          .updateExpression("SET #groupName = :groupName, #start = :start, #destination = :destination, #pickupTime = :pickupTime, #users = :users, #numAnonymousUsers = :numAnonymousUsers, #version = :newVersion")
+          .updateExpression("SET #groupName = :groupName, #start = :start, #destination = :destination, #pickupTime = :pickupTime, #users = :users, #version = :newVersion")
           .conditionExpression("#version = :expectedVersion")
           .expressionAttributeNames(Map(
             "#groupName" -> "groupName", "#start" -> "start", "#destination" -> "destination", "#pickupTime" -> "pickupTime",
-            "#users" -> "users", "#numAnonymousUsers" -> "numAnonymousUsers", "#version" -> "version"
+            "#users" -> "users", "#version" -> "version"
           ).asJava)
           .expressionAttributeValues(Map(
             ":groupName" -> s(updatedGroup.groupName),
@@ -149,7 +146,6 @@ class UserGroupOps(
             ":destination" -> s(updatedGroup.destination),
             ":pickupTime" -> n(updatedGroup.pickupTime),
             ":users" -> list(updatedGroup.users.map(groupUserToAttr)),
-            ":numAnonymousUsers" -> nInt(updatedGroup.numAnonymousUsers),
             ":newVersion" -> nInt(updatedGroup.version),
             ":expectedVersion" -> nInt(expectedGroupVersion)
           ).asJava)
@@ -173,6 +169,9 @@ class UserGroupOps(
         val allGroups = dao.listUserGroupRecordsByTripArn(trip.tripArn).map(g => if (g.arn == updatedGroup.arn) updatedGroup else g)
         val summaries = TripDAOLocationsHelper.summarizeUserGroupsFromRecords(allGroups)
         val locs = TripDAOLocationsHelper.orderedLocationsFromRecords(trip, allGroups)
+        TripDAOLocationsHelper.validateDropoffAfterPickup(locs, allGroups).foreach { msg =>
+          throw new IllegalArgumentException(msg)
+        }
 
         val tripUpdate = Update.builder()
           .tableName(tripMetadataTable)
@@ -235,21 +234,6 @@ class UserGroupOps(
       val req = TransactWriteItemsRequest.builder().transactItems(writes).build()
       client.transactWriteItems(req)
     }
-  }
-
-  def joinGroup(groupArn: String, newUser: GroupUser, expectedVersion: Int): Unit = {
-    val req = UpdateItemRequest.builder()
-      .tableName(userGroupsTable)
-      .key(Map("groupArn" -> s(groupArn)).asJava)
-      .expressionAttributeNames(Map("#users" -> "users", "#numAnonymousUsers" -> "numAnonymousUsers", "#version" -> "version").asJava)
-      .expressionAttributeValues(Map(
-        ":newUser" -> Attrs.list(List(groupUserToAttr(newUser))),
-        ":dec" -> nInt(-1), ":inc" -> nInt(1), ":expected" -> nInt(expectedVersion)
-      ).asJava)
-      .updateExpression("SET #users = list_append(#users, :newUser), #numAnonymousUsers = #numAnonymousUsers + :dec, #version = #version + :inc")
-      .conditionExpression("#version = :expected")
-      .build()
-    client.updateItem(req)
   }
 
   def acceptUserInvitation(tripArn: String, groupArn: String, userId: String, expectedGroupVersion: Int): Unit = {

@@ -51,8 +51,6 @@ object UpdateUserGroupHandler {
           }
           buff.toList
         }
-        val numAnonymousUsers = Option(node.get("numAnonymousUsers")).map(_.asInt())
-
         val newUsersList = users.getOrElse(g.users)
         if (tripOpt.isDefined) {
           val otherGroups = dao.listUserGroupRecordsByTripArn(g.tripArn).filter(_.arn != groupArn)
@@ -67,10 +65,13 @@ object UpdateUserGroupHandler {
         val expectedGroup = VersioningUtils.groupExpectedVersion(event, dao, groupArn)
 
         try {
-          dao.updateUserGroup(groupArn, expectedGroup, expectedTrip, groupName, start, destination, pickupTime, users, numAnonymousUsers)
+          dao.updateUserGroup(groupArn, expectedGroup, expectedTrip, groupName, start, destination, pickupTime, users)
           val updatedGroup = dao.getUserGroup(groupArn).get
           Responses.json(200, mapper.writeValueAsString(GetUserTripsHandler.groupToJson(updatedGroup)))
         } catch {
+          case e: IllegalArgumentException =>
+            val msg = Option(e.getMessage).getOrElse("Invalid request").replace("\\", "\\\\").replace("\"", "\\\"")
+            Responses.json(400, s"""{"error":"Bad Request","message":"$msg"}""")
           case _: Throwable => Responses.json(409, """{"error":"Version conflict"}""")
         }
     }

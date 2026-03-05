@@ -33,13 +33,10 @@ object JoinUserGroupHandler {
               return Responses.json(409, """{"error":"Already member of this group"}""")
             }
 
-            if (current.numAnonymousUsers <= 0) {
-              return Responses.json(403, """{"error":"Forbidden","message":"No anonymous spot available for this group"}""")
-            }
-
             val gu = GroupUser(userId = userId, name = Option(node.get("name")).map(_.asText()).getOrElse(""), imageUrl = Option(node.get("imageUrl")).filter(n => n != null && !n.isNull).map(_.asText()), accept = true)
+            val expectedTrip = dao.getTripMetadata(current.tripArn).getOrElse(return Responses.json(404, """{"error":"Trip not found"}"""))
             try {
-              dao.joinGroup(groupArn, gu, current.version)
+              dao.updateUserGroup(groupArn, current.version, expectedTrip.version, None, None, None, None, Some(current.users :+ gu))
             } catch {
               case _: Throwable => return Responses.json(409, """{"error":"Version conflict"}""")
             }
@@ -60,7 +57,6 @@ object JoinUserGroupHandler {
     node.put("start", g.start)
     node.put("destination", g.destination)
     node.put("pickupTime", g.pickupTime)
-    node.put("numAnonymousUsers", g.numAnonymousUsers)
     val usersNode = mapper.createArrayNode()
     g.users.foreach {
       user => usersNode.add(mapper.valueToTree[JsonNode](user))

@@ -19,7 +19,6 @@ final case class UserGroup(
   groupId: String,
   groupName: String,
   groupSize: Int,
-  numAnonymousUser: Int,
   imageUrl: Option[String] = None
 )
 
@@ -77,6 +76,5 @@ final case class UserGroupRecord(
   destination: String,
   pickupTime: Long,
   users: List[GroupUser] = Nil,
-  numAnonymousUsers: Int = 0,
   version: Int = 1
 )

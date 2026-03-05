@@ -51,7 +51,6 @@ class TripMetadataOps(client: DynamoDbClient, tripMetadataTable: String) {
             groupId = m.get("groupId").flatMap(a => Option(a.s())).getOrElse(""),
             groupName = m.get("groupName").flatMap(a => Option(a.s())).getOrElse(""),
             groupSize = m.get("groupSize").flatMap(a => Option(a.n())).map(_.toInt).getOrElse(0),
-            numAnonymousUser = m.get("numAnonymousUser").flatMap(a => Option(a.n())).map(_.toInt).getOrElse(0),
             imageUrl = m.get("imageUrl").flatMap(a => Option(a.s()))
           )
         }

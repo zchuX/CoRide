@@ -53,7 +53,7 @@ class UpdateTripMetadataHandlerSpec extends AnyFunSuite with Matchers with Mocki
       Location("D")
     )
     val trip = TripMetadata("trip-123", locations, 0L, None, "Upcoming", None, Some("driver-456"), None, None, None, None, None, None, None, 1)
-    val group = UserGroupRecord("group-1", "trip-123", "Group 1", "A", "D", 0L, List(GroupUser("user-123", "Test", None, true)), 0, 1)
+    val group = UserGroupRecord("group-1", "trip-123", "Group 1", "A", "D", 0L, List(GroupUser("user-123", "Test", None, true)), 1)
     when(mockTripDAO.getTripMetadata("trip-123")).thenReturn(Some(trip))
     when(mockUserGroupsDAO.listUserGroupRecordsByTripArn("trip-123")).thenReturn(List(group))
     when(mockTripDAO.userTripArn("trip-123", "user-123")).thenReturn("trip-123:user-123")
@@ -76,7 +76,7 @@ class UpdateTripMetadataHandlerSpec extends AnyFunSuite with Matchers with Mocki
       Location("D")
     )
     val trip = TripMetadata("trip-123", locations, 0L, None, "Upcoming", None, Some("driver-456"), None, None, None, None, None, None, None, 1)
-    val group = UserGroupRecord("group-1", "trip-123", "Group 1", "A", "D", 0L, List(GroupUser("user-123", "Test", None, true)), 0, 1)
+    val group = UserGroupRecord("group-1", "trip-123", "Group 1", "A", "D", 0L, List(GroupUser("user-123", "Test", None, true)), 1)
     when(mockTripDAO.getTripMetadata("trip-123")).thenReturn(Some(trip))
     when(mockUserGroupsDAO.listUserGroupRecordsByTripArn("trip-123")).thenReturn(List(group))
 
@@ -92,7 +92,7 @@ class UpdateTripMetadataHandlerSpec extends AnyFunSuite with Matchers with Mocki
     val mockUserGroupsDAO = mock[UserGroupsDAO]
     val locations = List(Location("A"), Location("B"))
     val trip = TripMetadata("trip-123", locations, 0L, None, "Upcoming", None, Some("driver-456"), None, None, None, None, None, None, None, 1)
-    val group = UserGroupRecord("group-1", "trip-123", "Group 1", "A", "B", 0L, List(GroupUser("user-123", "Test", None, true)), 0, 1)
+    val group = UserGroupRecord("group-1", "trip-123", "Group 1", "A", "B", 0L, List(GroupUser("user-123", "Test", None, true)), 1)
     when(mockTripDAO.getTripMetadata("trip-123")).thenReturn(Some(trip))
     when(mockUserGroupsDAO.listUserGroupRecordsByTripArn("trip-123")).thenReturn(List(group))
 

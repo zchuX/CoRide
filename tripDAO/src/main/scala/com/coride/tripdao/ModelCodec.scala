@@ -85,7 +85,6 @@ object ModelCodec {
     "destination" -> s(g.destination),
     "pickupTime" -> n(g.pickupTime),
     "users" -> list(g.users.map(groupUserToAttr)),
-    "numAnonymousUsers" -> nInt(g.numAnonymousUsers),
     "version" -> nInt(g.version)
   ).asJava
 }

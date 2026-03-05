@@ -1,0 +1,9 @@
+{
+  "name": "coride-scripts",
+  "private": true,
+  "type": "module",
+  "description": "One-off scripts (e.g. DB migrations)",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0"
+  }
+}

@@ -24,6 +24,9 @@ class TripLifecycleOps(
   def createTrip(base: TripMetadata, groups: List[UserGroupRecord]): Unit = {
     val summaries = TripDAOLocationsHelper.summarizeUserGroupsFromRecords(groups)
     val locs = TripDAOLocationsHelper.orderedLocationsFromRecords(base, groups)
+    TripDAOLocationsHelper.validateDropoffAfterPickup(locs, groups).foreach { msg =>
+      throw new IllegalArgumentException(msg)
+    }
     val trip = base.copy(usergroups = Some(summaries), locations = locs)
 
     val writes = new java.util.ArrayList[TransactWriteItem]()
@@ -67,6 +70,9 @@ class TripLifecycleOps(
   def createTripWithDriver(base: TripMetadata, groups: List[UserGroupRecord], driverTrip: UserTrip): Unit = {
     val summaries = TripDAOLocationsHelper.summarizeUserGroupsFromRecords(groups)
     val locs = TripDAOLocationsHelper.orderedLocationsFromRecords(base, groups)
+    TripDAOLocationsHelper.validateDropoffAfterPickup(locs, groups).foreach { msg =>
+      throw new IllegalArgumentException(msg)
+    }
     val trip = base.copy(usergroups = Some(summaries), locations = locs)
 
     val writes = new java.util.ArrayList[TransactWriteItem]()
@@ -127,6 +133,9 @@ class TripLifecycleOps(
       val allGroups = existing :+ newGroup
       val summaries = TripDAOLocationsHelper.summarizeUserGroupsFromRecords(allGroups)
       val locs = TripDAOLocationsHelper.orderedLocationsFromRecords(current, allGroups)
+      TripDAOLocationsHelper.validateDropoffAfterPickup(locs, allGroups).foreach { msg =>
+        throw new IllegalArgumentException(msg)
+      }
 
       val names = Map("#version" -> "version", "#usergroups" -> "usergroups", "#locations" -> "locations").asJava
       val values = Map(

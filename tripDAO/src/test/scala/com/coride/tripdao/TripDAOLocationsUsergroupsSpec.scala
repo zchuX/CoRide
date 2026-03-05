@@ -103,7 +103,7 @@ class TripDAOLocationsUsergroupsSpec extends AnyFunSuite with Matchers {
       version = 2
     )
 
-    dao.updateUserGroup(updatedB.arn, 2, 1, Some(updatedB.groupName), None, None, None, None, None)
+    dao.updateUserGroup(updatedB.arn, 2, 1, Some(updatedB.groupName), None, None, None, None)
 
     val captor = ArgumentCaptor.forClass(classOf[TransactWriteItemsRequest])
     verify(client, times(1)).transactWriteItems(captor.capture())

@@ -39,10 +39,6 @@
           "description": "A version number for the record, used for optimistic locking to prevent concurrent modification issues."
         },
         {
-          "field": "numAnonymousUsers",
-          "type": "int"
-        },
-        {
           "field": "users",
           "type": "List of GroupUser",
           "description": "A list of users within the group."

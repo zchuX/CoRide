@@ -78,9 +78,9 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
     val driverNameOpt = driverIdOpt.map(_ => verified.name).flatten
     val driverPhotoUrlOpt: Option[String] = None
 
-    // Trip-level start/destination: evaluate and dedupe (order: start then destination)
+    // Trip-level start/destination: evaluate and dedupe (order: start then destination). plannedTime is set only for pickup locations by DAO.
     val topLevelLocations = (startOpt.toList ++ destOpt.toList).distinct.map { name =>
-      Location(locationName = name, plannedTime = startTime, pickupGroups = Nil, dropOffGroups = Nil, arrived = false, arrivedTime = None)
+      Location(locationName = name, plannedTime = 0L, pickupGroups = Nil, dropOffGroups = Nil, arrived = false, arrivedTime = None)
     }
 
     val base = try {
@@ -122,7 +122,6 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
             val start = nodeText(gn, "start")
             val destination = nodeText(gn, "destination")
             val pickupTime = Option(gn.get("pickupTime")).filter(v => v != null && !v.isNull).map(_.asLong()).getOrElse(0L)
-            val numAnonymousUsers = Option(gn.get("numAnonymousUsers")).filter(v => v != null && !v.isNull).map(_.asInt).getOrElse(0)
             val usersNode = gn.get("users")
             val users = if (usersNode != null && usersNode.isArray) {
               val uit = usersNode.elements()
@@ -137,7 +136,7 @@ class CreateTripHandler(tripDao: TripDAO, userDao: UserDAO, jwt: JwtUtils) {
               }
               ub.toList
             } else Nil
-            buff += UserGroupRecord(arn = arn, tripArn = tripArn, groupName = groupName, start = start, destination = destination, pickupTime = pickupTime, users = users, numAnonymousUsers = numAnonymousUsers, version = 1)
+            buff += UserGroupRecord(arn = arn, tripArn = tripArn, groupName = groupName, start = start, destination = destination, pickupTime = pickupTime, users = users, version = 1)
           }
           buff.toList
         } else Nil

@@ -46,8 +46,6 @@ object CreateUserGroupHandler {
       buff.toList
     }.getOrElse(Nil)
 
-    val numAnonymousUsers = Option(node.get("numAnonymousUsers")).filter(n => n != null && !n.isNull).map(_.asInt()).getOrElse(0)
-
     val rec = UserGroupRecord(
       arn = groupArn,
       tripArn = tripArn,
@@ -56,7 +54,6 @@ object CreateUserGroupHandler {
       destination = destination,
       pickupTime = pickupTime,
       users = users,
-      numAnonymousUsers = numAnonymousUsers,
       version = 1
     )
 

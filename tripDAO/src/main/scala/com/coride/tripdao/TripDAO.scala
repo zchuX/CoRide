@@ -49,6 +49,10 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
   def userTripArn(tripArn: String, userId: String): String = TripDAOLocationsHelper.userTripArn(tripArn, userId)
   def orderedLocationsFromRecords(trip: TripMetadata, groups: List[UserGroupRecord]): List[Location] =
     TripDAOLocationsHelper.orderedLocationsFromRecords(trip, groups)
+  def validateDropoffAfterPickupByNames(orderedLocationNames: List[String], groups: List[UserGroupRecord]): Option[String] =
+    TripDAOLocationsHelper.validateDropoffAfterPickupByNames(orderedLocationNames, groups)
+  def locationsForOrderAndGroups(orderedNames: List[String], groups: List[UserGroupRecord], existingLocations: List[Location]): List[Location] =
+    TripDAOLocationsHelper.locationsForOrderAndGroups(orderedNames, groups, existingLocations)
 
   // --- UserGroupOps
   override def listUserGroupRecordsByTripArn(tripArn: String, limit: Int = 100): List[UserGroupRecord] =
@@ -65,12 +69,10 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
     start: Option[String],
     destination: Option[String],
     pickupTime: Option[Long],
-    users: Option[List[GroupUser]],
-    numAnonymousUsers: Option[Int]
-  ): Unit = userGroups.updateUserGroup(groupArn, expectedGroupVersion, expectedTripVersion, groupName, start, destination, pickupTime, users, numAnonymousUsers)
+    users: Option[List[GroupUser]]
+  ): Unit = userGroups.updateUserGroup(groupArn, expectedGroupVersion, expectedTripVersion, groupName, start, destination, pickupTime, users)
   def removeUserGroup(groupArn: String, expectedTripVersion: Int, expectedGroupVersion: Int): Unit =
     userGroups.removeUserGroup(groupArn, expectedTripVersion, expectedGroupVersion)
-  def joinGroup(groupArn: String, newUser: GroupUser, expectedVersion: Int): Unit = userGroups.joinGroup(groupArn, newUser, expectedVersion)
   def acceptUserInvitation(tripArn: String, groupArn: String, userId: String, expectedGroupVersion: Int): Unit =
     userGroups.acceptUserInvitation(tripArn, groupArn, userId, expectedGroupVersion)
 

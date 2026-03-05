@@ -35,7 +35,6 @@ class UserGroupsDAO() {
         dAttr <- m.get("destination"); d <- Option(dAttr.s())
         ptAttr <- m.get("pickupTime"); pt <- Option(ptAttr.n())
         vAttr <- m.get("version"); v <- Option(vAttr.n())
-        nauAttr <- m.get("numAnonymousUsers"); nau <- Option(nauAttr.n())
       } yield {
         val users: List[GroupUser] = m.get("users").flatMap(av => Option(av.l())).map(_.asScala.toList).map { lst =>
           val maps: List[Map[String, AttributeValue]] = lst.flatMap(av => Option(av.m())).map(_.asScala.toMap)
@@ -47,7 +46,7 @@ class UserGroupsDAO() {
             GroupUser(uid, name, image, accept)
           }
         }.getOrElse(Nil)
-        UserGroupRecord(arn = arn, tripArn = ta, groupName = gn, start = s, destination = d, pickupTime = pt.toLong, users = users, numAnonymousUsers = nau.toInt, version = v.toInt)
+        UserGroupRecord(arn = arn, tripArn = ta, groupName = gn, start = s, destination = d, pickupTime = pt.toLong, users = users, version = v.toInt)
       }
     }
   }

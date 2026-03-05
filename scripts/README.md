@@ -166,13 +166,13 @@ After a workflow run with `--save-session`, any one-off call can use the stored 
 ./easy-api.sh --stage dev --session GET "api/trips?completed=false" '{}'
 ```
 
-**Create a user group** (e.g. with 2 anonymous users) on an existing trip. Use your stored session (bearer token) for any authenticated call:
+**Create a user group** on an existing trip. Use your stored session (bearer token) for any authenticated call:
 
 ```bash
 TRIP_ARN="B3MS6L"
 GROUP_ARN="group:$(uuidgen | tr '[:upper:]' '[:lower:]')"
 PICKUP=$(python3 -c 'import time; print(int(time.time()*1000)+3600000)')
-./easy-api.sh --stage dev --session api/user-groups "{\"tripArn\":\"$TRIP_ARN\",\"groupArn\":\"$GROUP_ARN\",\"groupName\":\"Riders\",\"start\":\"Downtown\",\"destination\":\"Airport\",\"pickupTime\":$PICKUP,\"numAnonymousUsers\":2,\"users\":[]}"
+./easy-api.sh --stage dev --session api/user-groups "{\"tripArn\":\"$TRIP_ARN\",\"groupArn\":\"$GROUP_ARN\",\"groupName\":\"Riders\",\"start\":\"Downtown\",\"destination\":\"Airport\",\"pickupTime\":$PICKUP,\"users\":[]}"
 ```
 
 Path must be `api/user-groups` so the request goes through the API Gateway proxy. If the session is expired, run `workflow login --profile primary --save-session` first to refresh the token.

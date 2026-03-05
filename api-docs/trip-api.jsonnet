@@ -37,7 +37,7 @@
           },
           "groups": {
             "type": "List[GroupInput]",
-            "description": "List of groups. Do NOT send arn/groupArn – server generates it. Each group: groupName (String, required), start (String), destination (String), pickupTime (Long ms), users (List[GroupUser], optional), numAnonymousUsers (Int, optional, default 0). GroupUser: userArn (String, required – same as Users table key, e.g. Cognito sub), name (String), imageUrl (optional), accept (optional, default false). Each listed user must exist; creation fails with 400 if userArn is missing or not found."
+            "description": "List of groups. Do NOT send arn/groupArn – server generates it. Each group: groupName (String, required), start (String), destination (String), pickupTime (Long ms), users (List[GroupUser], optional). GroupUser: userArn (String, required – same as Users table key, e.g. Cognito sub), name (String), imageUrl (optional), accept (optional, default false). Each listed user must exist; creation fails with 400 if userArn is missing or not found."
           }
         }
       },
@@ -318,10 +318,6 @@
             "required": true,
             "description": "Unix ms timestamp."
           },
-          "numAnonymousUsers": {
-            "type": "Int",
-            "description": "Default 0."
-          },
           "users": {
             "type": "List[GroupUser]",
             "description": "GroupUser: userId, name, imageUrl (optional), accept (optional, default false)."
@@ -339,7 +335,6 @@
             "destination": "String",
             "pickupTime": "Long",
             "users": "List[GroupUser]",
-            "numAnonymousUsers": "Int",
             "version": "Int"
           }
         },
@@ -394,9 +389,6 @@
           "users": {
             "type": "Option[List[GroupUser]]",
             "description": "Full replacement list. Added users get a UserTrip; removed users have their UserTrip deleted."
-          },
-          "numAnonymousUsers": {
-            "type": "Option[Int]"
           }
         }
       },
@@ -435,7 +427,7 @@
       }
     },
     "JoinUserGroup": {
-      "description": "Joins a group as an anonymous slot. Caller must not already be in the group and numAnonymousUsers must be ≥ 1. Decrements numAnonymousUsers and adds caller to users with accept=true. No UserTrip is created.",
+      "description": "Joins a group. Caller must not already be in the group. Appends caller to the group's users list with accept=true and creates a UserTrip for the joiner. Uses updateUserGroup under the hood.",
       "request": {
         "method": "POST",
         "path": "/api/user-groups/{groupArn}/join",
@@ -450,9 +442,9 @@
           "description": "Updated UserGroupRecord.",
           "body": "UserGroupRecord"
         },
-        "400": "No anonymous slots available or caller already in group.",
+        "400": "Caller already in group.",
         "401": "Missing or invalid Bearer token.",
-        "404": "Group not found.",
+        "404": "Group or trip not found.",
         "409": "Version conflict."
       }
     }
@@ -501,7 +493,6 @@
       "destination": "String",
       "pickupTime": "Long (ms)",
       "users": "List[GroupUser]",
-      "numAnonymousUsers": "Int",
       "version": "Int"
     },
     "GroupUser": {
