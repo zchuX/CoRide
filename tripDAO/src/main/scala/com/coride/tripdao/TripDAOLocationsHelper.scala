@@ -193,7 +193,8 @@ object TripDAOLocationsHelper {
       departureDateTime = group.pickupTime,
       isDriver = trip.driver.exists(_ == user.userId),
       driverConfirmed = trip.driverConfirmed.getOrElse(false),
-      version = 1
+      version = 1,
+      userGroupArn = Some(group.arn)
     )
   }
 }

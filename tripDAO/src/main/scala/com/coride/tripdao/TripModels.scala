@@ -57,7 +57,8 @@ final case class UserTrip(
   departureDateTime: Long,
   isDriver: Boolean = false,
   driverConfirmed: Boolean,
-  version: Int = 1
+  version: Int = 1,
+  userGroupArn: Option[String] = None
 )
 
 // Additional table models: UserGroups

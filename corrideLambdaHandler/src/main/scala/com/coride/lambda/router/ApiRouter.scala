@@ -196,6 +196,14 @@ class ApiRouter(ddb: DynamoDbClient, tripDao: TripDAO, userDao: UserDAO, userGro
           val tripArn = p.stripPrefix("/api/trips/").stripSuffix("/driver")
           BecomeDriverHandler.handle(event)
 
+        case ("POST", p) if p.matches("/api/trips/.+/invite-driver") =>
+          val tripArn = p.stripPrefix("/api/trips/").stripSuffix("/invite-driver")
+          InviteDriverHandler.handle(event, tripArn)
+
+        case ("POST", p) if p.matches("/api/trips/.+/accept-driver-invitation") =>
+          val tripArn = p.stripPrefix("/api/trips/").stripSuffix("/accept-driver-invitation")
+          AcceptDriverInvitationHandler.handle(event, tripArn)
+
         // ---------- Fallback for unknown routes ----------
         case _ =>
           Responses.json(404, """{"error":"Not Found"}""")

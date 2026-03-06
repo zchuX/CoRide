@@ -57,19 +57,26 @@ object ModelCodec {
     "version" -> nInt(t.version)
   ).asJava
 
-  def userTripToItem(t: UserTrip): java.util.Map[String, AttributeValue] = Map(
-    "arn" -> s(t.arn),
-    "tripArn" -> s(t.tripArn),
-    "userStatusKey" -> s(t.userStatusKey),
-    "tripDateTime" -> n(t.tripDateTime),
-    "tripStatus" -> s(t.tripStatus),
-    "start" -> s(t.start),
-    "destination" -> s(t.destination),
-    "departureDateTime" -> n(t.departureDateTime),
-    "isDriver" -> bool(t.isDriver),
-    "driverConfirmed" -> bool(t.driverConfirmed),
-    "version" -> nInt(t.version)
-  ).asJava
+  def userTripToItem(t: UserTrip): java.util.Map[String, AttributeValue] = {
+    val base = Map(
+      "arn" -> s(t.arn),
+      "tripArn" -> s(t.tripArn),
+      "userStatusKey" -> s(t.userStatusKey),
+      "tripDateTime" -> n(t.tripDateTime),
+      "tripStatus" -> s(t.tripStatus),
+      "start" -> s(t.start),
+      "destination" -> s(t.destination),
+      "departureDateTime" -> n(t.departureDateTime),
+      "isDriver" -> bool(t.isDriver),
+      "driverConfirmed" -> bool(t.driverConfirmed),
+      "version" -> nInt(t.version)
+    )
+    val withGroup = t.userGroupArn match {
+      case Some(g) => base + ("userGroupArn" -> s(g))
+      case None    => base + ("userGroupArn" -> AttributeValue.builder().nul(true).build())
+    }
+    withGroup.asJava
+  }
 
   def groupUserToAttr(u: GroupUser): AttributeValue = map(Map(
     "userId" -> s(u.userId),

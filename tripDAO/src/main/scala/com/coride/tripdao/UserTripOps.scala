@@ -44,8 +44,9 @@ class UserTripOps(client: DynamoDbClient, userTripsTable: String, tripMeta: Trip
       driverConfirmed <- getB("driverConfirmed")
     } yield {
       val version = attrs.get("version").flatMap(a => Option(a.n())).map(_.toInt).getOrElse(1)
-      val tripArn = getS("tripArn").getOrElse(arn.split('#').head)
-      UserTrip(arn, tripArn, userStatusKey, tripDateTime, tripStatus, start, destination, departureDateTime, isDriver, driverConfirmed, version)
+      val tripArn = getS("tripArn").getOrElse(arn.split(":", 2).head)
+      val userGroupArn = getS("userGroupArn").filter(_.nonEmpty)
+      UserTrip(arn, tripArn, userStatusKey, tripDateTime, tripStatus, start, destination, departureDateTime, isDriver, driverConfirmed, version, userGroupArn)
     }
   }
 
@@ -102,12 +103,35 @@ class UserTripOps(client: DynamoDbClient, userTripsTable: String, tripMeta: Trip
     client.updateItem(req)
   }
 
+  def updateUserTripGroupArn(arn: String, groupArn: String): Unit = {
+    val req = UpdateItemRequest.builder()
+      .tableName(userTripsTable)
+      .key(Map("arn" -> s(arn)).asJava)
+      .updateExpression("SET #g = :g")
+      .expressionAttributeNames(Map("#g" -> "userGroupArn").asJava)
+      .expressionAttributeValues(Map(":g" -> s(groupArn)).asJava)
+      .build()
+    client.updateItem(req)
+  }
+
   def deleteUserTrip(arn: String): Unit = {
     val req = DeleteItemRequest.builder()
       .tableName(userTripsTable)
       .key(Map("arn" -> s(arn)).asJava)
       .build()
     client.deleteItem(req)
+  }
+
+  /** Scan all UserTrip items (paginated) and call process for each. Used for backfill. */
+  def processAllUserTrips(process: UserTrip => Unit): Unit = {
+    var lastKey: Option[java.util.Map[String, AttributeValue]] = None
+    do {
+      val reqBuilder = ScanRequest.builder().tableName(userTripsTable)
+      lastKey.foreach(reqBuilder.exclusiveStartKey)
+      val res = client.scan(reqBuilder.build())
+      res.items().asScala.foreach(it => parseUserTrip(it.asScala.to(scala.collection.mutable.Map)).foreach(process))
+      lastKey = Option(res.lastEvaluatedKey()).filter(m => m != null && !m.isEmpty())
+    } while (lastKey.isDefined)
   }
 
   def setUserTripStatusesForTrip(tripArn: String, newStatus: String): Unit = {

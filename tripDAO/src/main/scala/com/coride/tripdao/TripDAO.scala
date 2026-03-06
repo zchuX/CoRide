@@ -85,6 +85,8 @@ class TripDAO(client: DynamoDbClient, tripMetadataTable: String, userTripsTable:
   def updateUserTripStatus(arn: String, tripStatus: String, expectedVersion: Int, driverConfirmed: Option[Boolean] = None): Unit =
     userTrips.updateUserTripStatus(arn, tripStatus, expectedVersion, driverConfirmed)
   def deleteUserTrip(arn: String): Unit = userTrips.deleteUserTrip(arn)
+  def updateUserTripGroupArn(arn: String, groupArn: String): Unit = userTrips.updateUserTripGroupArn(arn, groupArn)
+  def processAllUserTrips(process: UserTrip => Unit): Unit = userTrips.processAllUserTrips(process)
   def setUserTripStatusesForTrip(tripArn: String, newStatus: String): Unit = userTrips.setUserTripStatusesForTrip(tripArn, newStatus)
   def setCurrentStopAndSyncStatuses(tripArn: String, currentStop: String, expectedTripVersion: Int): Unit =
     userTrips.setCurrentStopAndSyncStatuses(tripArn, currentStop, expectedTripVersion)

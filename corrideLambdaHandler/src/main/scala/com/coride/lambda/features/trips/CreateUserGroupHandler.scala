@@ -8,16 +8,19 @@ import com.coride.tripdao.{TripDAO, UserGroupRecord, GroupUser}
 import com.fasterxml.jackson.databind.ObjectMapper
 
 object CreateUserGroupHandler {
-  private val dao = TripDAO()
+  private val defaultDao = TripDAO()
   private val mapper = new ObjectMapper()
   private val userPoolId: String = Option(System.getenv("USER_POOL_ID")).getOrElse("")
   private val awsRegion: String = Option(System.getenv("AWS_REGION")).getOrElse("us-east-1")
   private val userPoolClientId: String = Option(System.getenv("USER_POOL_CLIENT_ID")).getOrElse("")
-  private val jwt = new JwtUtils(userPoolId, awsRegion, userPoolClientId)
+  private val defaultJwt = new JwtUtils(userPoolId, awsRegion, userPoolClientId)
 
   private def generateGroupArn(): String = s"group:${UUID.randomUUID().toString.replace("-", "").toLowerCase}"
 
-  def handle(event: APIGatewayProxyRequestEvent): APIGatewayProxyResponseEvent = {
+  def handle(event: APIGatewayProxyRequestEvent): APIGatewayProxyResponseEvent =
+    handle(event, defaultDao, defaultJwt)
+
+  def handle(event: APIGatewayProxyRequestEvent, dao: TripDAO, jwt: JwtUtils): APIGatewayProxyResponseEvent = {
     // Require authenticated user
     val tokenOpt = TokenUtils.bearer(event.getHeaders)
     val userIdOpt = tokenOpt.flatMap(tok => jwt.verifyIdToken(tok).map(_.sub))
@@ -46,6 +49,13 @@ object CreateUserGroupHandler {
       buff.toList
     }.getOrElse(Nil)
 
+    if (users.isEmpty) {
+      return Responses.json(400, """{"error":"Bad Request","message":"User group must have at least one user"}""")
+    }
+
+    val callerId = userIdOpt.get
+    val usersWithCallerAccepted = users.map(u => if (u.userId == callerId) u.copy(accept = true) else u)
+
     val rec = UserGroupRecord(
       arn = groupArn,
       tripArn = tripArn,
@@ -53,7 +63,7 @@ object CreateUserGroupHandler {
       start = start,
       destination = destination,
       pickupTime = pickupTime,
-      users = users,
+      users = usersWithCallerAccepted,
       version = 1
     )
 

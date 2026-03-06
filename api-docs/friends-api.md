@@ -13,9 +13,11 @@ Returns the authenticated user’s accepted friends. Requires a valid id token.
 **Headers:** `Authorization: Bearer <idToken>`, `x-api-key: <apiKey>`
 
 **Query params (optional):**
+
 - `limit` (Int, default 100) — Max number of friends to return.
 
 **Responses:**
+
 - **200** — Body: `{ "friends": [ { "userArn": "...", "name": "..." } ] }`. Each item includes denormalized `userArn` and `name`.
 - **401** — Missing or invalid Bearer token.
 
@@ -30,9 +32,11 @@ Creates an accepted friendship between the authenticated user and the given user
 **Headers:** `Authorization: Bearer <idToken>`, `Content-Type: application/json`, `x-api-key: <apiKey>`
 
 **Body:**
+
 - `friendUserArn` (String, required) — The other user’s ARN (e.g. Cognito sub).
 
 **Responses:**
+
 - **200** — Friendship created (or already exists).
 - **400** — Missing `friendUserArn` or same as caller.
 - **401** — Missing or invalid Bearer token.
@@ -49,6 +53,7 @@ Removes the accepted friendship between the authenticated user and the given use
 **Headers:** `Authorization: Bearer <idToken>`, `x-api-key: <apiKey>`
 
 **Responses:**
+
 - **200** — Friendship removed (or was not present).
 - **401** — Missing or invalid Bearer token.
 
@@ -63,6 +68,7 @@ Returns the caller’s profile record stored in the UserFriends table (userArn +
 **Headers:** `Authorization: Bearer <idToken>`, `x-api-key: <apiKey>`
 
 **Responses:**
+
 - **200** — Body: `{ "userArn": "...", "name": "..." }`.
 - **401** — Missing or invalid Bearer token.
 - **404** — No profile in UserFriends table (e.g. not yet created).
@@ -81,3 +87,4 @@ Returns the caller’s profile record stored in the UserFriends table (userArn +
   - Add friendship: two `PutItem`s (one under each user’s partition) in a transaction.
   - Remove friendship: two `DeleteItem`s in a transaction.
 - No GSI required for normal friend listing.
+

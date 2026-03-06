@@ -92,7 +92,7 @@
       }
     },
     "GetUserTrips": {
-      "description": "Gets all trips for the authenticated user.",
+      "description": "Gets all trips for the authenticated user. Each list item may include userGroupArn for passengers (set by group flows: CreateUserGroup, AcceptInvitation, JoinUserGroup); driver items (from BecomeDriver, InviteDriver, AcceptDriverInvitation) omit userGroupArn.",
       "request": {
         "method": "GET",
         "path": "/api/trips",
@@ -114,7 +114,7 @@
           "body": {
             "trips": {
               "type": "List[UserTripListItem]",
-              "description": "Each item: tripArn, startTime, status, start, destination, isDriver, driverConfirmed, userTripArn, userTripStatus, groupArn."
+              "description": "Each item: tripArn, startTime, status, start, destination, isDriver, driverConfirmed, userTripArn, userTripStatus. userGroupArn (optional, string): present only for passengers – the ARN of the user group this passenger belongs to; omitted for drivers (BecomeDriver, InviteDriver, AcceptDriverInvitation)."
             }
           }
         },
@@ -242,7 +242,7 @@
       }
     },
     "LeaveTrip": {
-      "description": "Removes the authenticated user from their group in a trip. If the group or trip becomes empty after removal, it is deleted transactionally.",
+      "description": "Removes the authenticated user from the trip. If the user is in a group, they are removed from that group (group or trip deleted if empty). If the user is the driver (confirmed or invited), driver is cleared from trip metadata and their UserTrip is deleted (use this to reject a driver invitation).",
       "request": {
         "method": "POST",
         "path": "/api/trips/{tripArn}/leave",
@@ -260,15 +260,67 @@
           }
         },
         "401": "Missing or invalid Bearer token.",
-        "404": "Trip not found or caller not in any group.",
+        "404": "Trip not found or user not in any group and not the driver.",
         "409": "Version conflict."
       }
     },
     "BecomeDriver": {
-      "description": "Sets the authenticated user as the driver for a trip. Resolves driver name and photo URL from UserDAO and stores them on TripMetadata.",
+      "description": "Claims the driver role when the trip has no confirmed driver. Sets the authenticated user as driver (confirmed) and creates their UserTrip with status Upcoming. Use when volunteering to drive. If you were invited as driver, use AcceptDriverInvitation instead.",
       "request": {
         "method": "POST",
         "path": "/api/trips/{tripArn}/driver",
+        "headers": {
+          "Authorization": "Bearer <idToken>",
+          "x-api-key": "<apiKey>",
+          "X-Expected-Version": "<Int> (optional)"
+        },
+        "body": {
+          "tripArn": { "type": "String", "required": true }
+        }
+      },
+      "response": {
+        "200": {
+          "description": "Updated TripMetadata with driver set.",
+          "body": "TripMetadata"
+        },
+        "400": "Trip already has a confirmed driver.",
+        "401": "Missing or invalid Bearer token.",
+        "404": "Trip not found.",
+        "409": "Version conflict."
+      }
+    },
+    "InviteDriver": {
+      "description": "Invites a user to be the driver: sets driver (unconfirmed) on trip metadata and creates a UserTrip for them with status Invitation. Only the confirmed driver or a group member may invite. Rejected if trip already has a confirmed driver. The invited driver accepts via AcceptDriverInvitation or rejects by calling LeaveTrip.",
+      "request": {
+        "method": "POST",
+        "path": "/api/trips/{tripArn}/invite-driver",
+        "headers": {
+          "Authorization": "Bearer <idToken>",
+          "x-api-key": "<apiKey>",
+          "X-Expected-Version": "<Int> (optional)"
+        },
+        "body": {
+          "driver": { "type": "String", "required": true, "description": "UserId (e.g. Cognito sub) of the user to invite as driver." },
+          "driverUserId": { "type": "String", "description": "Alias for driver." }
+        }
+      },
+      "response": {
+        "200": {
+          "description": "Updated TripMetadata with driver set (unconfirmed).",
+          "body": "TripMetadata"
+        },
+        "400": "Trip already has a confirmed driver, or driver/driverUserId missing.",
+        "401": "Missing or invalid Bearer token.",
+        "403": "Only confirmed driver or group member may invite.",
+        "404": "Trip not found.",
+        "409": "Version conflict."
+      }
+    },
+    "AcceptDriverInvitation": {
+      "description": "Accepts the driver invitation. Caller must be the trip's driver with driverConfirmed = false. Sets driverConfirmed = true and updates the driver's UserTrip from Invitation to Upcoming.",
+      "request": {
+        "method": "POST",
+        "path": "/api/trips/{tripArn}/accept-driver-invitation",
         "headers": {
           "Authorization": "Bearer <idToken>",
           "x-api-key": "<apiKey>",
@@ -277,16 +329,18 @@
       },
       "response": {
         "200": {
-          "description": "Updated TripMetadata with driver set.",
+          "description": "Updated TripMetadata with driverConfirmed = true.",
           "body": "TripMetadata"
         },
+        "400": "Already accepted or no invitation to accept.",
         "401": "Missing or invalid Bearer token.",
-        "404": "Trip not found.",
+        "403": "Caller is not the invited driver.",
+        "404": "Trip or driver UserTrip not found.",
         "409": "Version conflict."
       }
     },
     "CreateUserGroup": {
-      "description": "Creates a new user group on an existing trip. groupArn is server-generated; do not send it. The caller's accept flag is forced to true if they appear in users.",
+      "description": "Creates a new user group on an existing trip. groupArn is server-generated; do not send it. Rejected with 400 if the group has no users (users empty or missing) or if any user in the group is already on the trip (driver or in another group). The caller's accept flag is forced to true if they appear in users.",
       "request": {
         "method": "POST",
         "path": "/api/user-groups",
@@ -320,7 +374,8 @@
           },
           "users": {
             "type": "List[GroupUser]",
-            "description": "GroupUser: userId, name, imageUrl (optional), accept (optional, default false)."
+            "required": true,
+            "description": "At least one user required. GroupUser: userId, name, imageUrl (optional), accept (optional, default false)."
           }
         }
       },
@@ -338,6 +393,7 @@
             "version": "Int"
           }
         },
+        "400": "Bad Request: empty user group (users empty or missing), or a user in the group is already on the trip (driver or in another group).",
         "401": "Missing or invalid Bearer token.",
         "404": "Trip not found.",
         "409": "Version conflict or duplicate user."

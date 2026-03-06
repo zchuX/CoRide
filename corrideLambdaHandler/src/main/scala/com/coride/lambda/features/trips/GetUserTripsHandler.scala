@@ -59,6 +59,7 @@ object GetUserTripsHandler {
     node.put("driverConfirmed", ut.driverConfirmed)
     node.put("userTripArn", ut.arn)
     node.put("userTripStatus", ut.tripStatus)
+    ut.userGroupArn.foreach(node.put("userGroupArn", _))
     node
   }
 

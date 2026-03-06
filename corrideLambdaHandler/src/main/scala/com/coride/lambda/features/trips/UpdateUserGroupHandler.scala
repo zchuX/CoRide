@@ -52,9 +52,10 @@ object UpdateUserGroupHandler {
           buff.toList
         }
         val newUsersList = users.getOrElse(g.users)
+        val usersWithCallerAccepted = newUsersList.map(u => if (u.userId == actingUserId) u.copy(accept = true) else u)
         if (tripOpt.isDefined) {
           val otherGroups = dao.listUserGroupRecordsByTripArn(g.tripArn).filter(_.arn != groupArn)
-          val syntheticGroups = otherGroups :+ g.copy(users = newUsersList)
+          val syntheticGroups = otherGroups :+ g.copy(users = usersWithCallerAccepted)
           TripValidation.validateNoDuplicateUsersInTrip(tripOpt.get.driver, syntheticGroups).foreach { msg =>
             val escaped = msg.replace("\\", "\\\\").replace("\"", "\\\"")
             return Responses.json(400, s"""{"error":"Bad Request","message":"$escaped"}""")
@@ -63,9 +64,10 @@ object UpdateUserGroupHandler {
 
         val expectedTrip = VersioningUtils.tripExpectedVersion(event, dao, g.tripArn)
         val expectedGroup = VersioningUtils.groupExpectedVersion(event, dao, groupArn)
+        val usersToWrite = users.map(_ => usersWithCallerAccepted)
 
         try {
-          dao.updateUserGroup(groupArn, expectedGroup, expectedTrip, groupName, start, destination, pickupTime, users)
+          dao.updateUserGroup(groupArn, expectedGroup, expectedTrip, groupName, start, destination, pickupTime, usersToWrite)
           val updatedGroup = dao.getUserGroup(groupArn).get
           Responses.json(200, mapper.writeValueAsString(GetUserTripsHandler.groupToJson(updatedGroup)))
         } catch {

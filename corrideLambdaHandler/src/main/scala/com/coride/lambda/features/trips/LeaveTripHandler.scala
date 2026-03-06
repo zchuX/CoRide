@@ -52,7 +52,7 @@ object LeaveTripHandler {
             case _: Throwable => Responses.json(409, """{"error":"Version conflict"}""")
           }
         } else if (isDriverOnly) {
-          // User is the driver and not in any group: clear driver and remove their UserTrip
+          // User is the driver (confirmed or invited) and not in any group: clear driver and remove their UserTrip (handles rejection of driver invitation)
           val expectedTrip = VersioningUtils.tripExpectedVersion(event, dao, tripArn)
           try {
             val updatedTm = tm.copy(driver = None, driverName = None, driverPhotoUrl = None, driverConfirmed = Some(false))

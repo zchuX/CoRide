@@ -2,10 +2,15 @@ package com.coride.lambda.features.trips
 
 import com.amazonaws.services.lambda.runtime.events.{APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent}
 import com.coride.lambda.util.{Responses, JsonUtils, VersioningUtils, TokenUtils, JwtUtils}
-import com.coride.tripdao.TripDAO
+import com.coride.tripdao.{TripDAO, UserTrip}
 import com.coride.userdao.UserDAO
 import com.fasterxml.jackson.databind.ObjectMapper
 
+/**
+ * Claims the driver role when the trip has no driver. Sets caller as driver (confirmed) on trip
+ * metadata and creates the driver's UserTrip with status Upcoming if they don't have one.
+ * For accepting an invitation use AcceptDriverInvitation instead.
+ */
 object BecomeDriverHandler {
   private val dao = TripDAO()
   private val userDao = UserDAO()
@@ -30,7 +35,8 @@ object BecomeDriverHandler {
         current match {
           case None => Responses.json(404, """{"error":"Trip not found"}""")
           case Some(tm) =>
-            // driverConfirmed is true when the user has accepted (BecomeDriver). It is only false when driver is None or an invitation was sent but not yet accepted.
+            if (tm.driver.isDefined)
+              return Responses.json(400, """{"error":"Bad Request","message":"Trip already has a driver; use accept-driver-invitation if you were invited, or leave the driver role first"}""")
             val driverUser = userDao.getUser(userId)
             val updated = tm.copy(
               driver = Some(userId),
@@ -40,6 +46,25 @@ object BecomeDriverHandler {
             )
             try {
               dao.updateTripMetadata(updated, expected)
+              val utArn = dao.userTripArn(tripArn, userId)
+              if (dao.getUserTrip(utArn).isEmpty) {
+                val start = tm.locations.headOption.map(_.locationName).getOrElse("")
+                val dest = tm.locations.lastOption.map(_.locationName).getOrElse("")
+                val driverTrip = UserTrip(
+                  arn = utArn,
+                  tripArn = tripArn,
+                  userStatusKey = s"$userId-uncompleted",
+                  tripDateTime = tm.startTime,
+                  tripStatus = "Upcoming",
+                  start = start,
+                  destination = dest,
+                  departureDateTime = tm.startTime,
+                  isDriver = true,
+                  driverConfirmed = true,
+                  version = 1
+                )
+                dao.putUserTrip(driverTrip)
+              }
               Responses.json(200, mapper.writeValueAsString(GetUserTripsHandler.toJson(updated)))
             } catch {
               case _: Throwable => Responses.json(409, """{"error":"Version conflict"}""")
